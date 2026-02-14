@@ -52,7 +52,9 @@ class LEVELDB_EXPORT Status {
   static Status IOError(const Slice& msg, const Slice& msg2 = Slice()) {
     return Status(kIOError, msg, msg2);
   }
-
+  static Status NoSpace(const Slice& msg, const Slice& msg2 = Slice()) {
+    return Status(kNoSpace, msg,msg2);
+  }
   // Returns true iff the status indicates success.
   bool ok() const { return (state_ == nullptr); }
 
@@ -71,9 +73,17 @@ class LEVELDB_EXPORT Status {
   // Returns true iff the status indicates an InvalidArgument.
   bool IsInvalidArgument() const { return code() == kInvalidArgument; }
 
+  bool IsNoSpace() const { return code() == kNoSpace; }
   // Return a string representation of this status suitable for printing.
   // Returns the string "OK" for success.
   std::string ToString() const;
+  bool operator==(const Status& rhs) {
+    return this->code() == rhs.code();
+  }
+
+  bool operator!=(const Status& rhs) {
+    return this->code() != rhs.code();
+  }
 
  private:
   enum Code {
@@ -82,12 +92,14 @@ class LEVELDB_EXPORT Status {
     kCorruption = 2,
     kNotSupported = 3,
     kInvalidArgument = 4,
-    kIOError = 5
+    kIOError = 5,
+    kNoSpace = 6,
   };
 
   Code code() const {
     return (state_ == nullptr) ? kOk : static_cast<Code>(state_[4]);
   }
+
 
   Status(Code code, const Slice& msg, const Slice& msg2);
   static const char* CopyState(const char* s);
@@ -116,6 +128,7 @@ inline Status& Status::operator=(Status&& rhs) noexcept {
   std::swap(state_, rhs.state_);
   return *this;
 }
+
 
 }  // namespace leveldb
 

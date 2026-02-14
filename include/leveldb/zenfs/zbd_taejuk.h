@@ -19,7 +19,6 @@
 #include <vector>
 
 #include "leveldb/env.h"
-#include "leveldb/file_system.h"
 #include "leveldb/status.h"
 
 namespace leveldb {
@@ -208,7 +207,7 @@ class ZonedBlockDevice {
 
   Status ReleaseMigrateZone(Zone *zone);
 
-  Status TakeMigrateZone(Zone **out_zone, Env::WriteLifeTimeHint lifetime,
+  Status TakeMigrateZone(Zone **out_zone, WriteLifeTimeHint lifetime,
                            uint32_t min_capacity);
 
   void AddBytesWritten(uint64_t written) { bytes_written_ += written; };

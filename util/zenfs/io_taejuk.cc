@@ -81,9 +81,7 @@ void ZoneFile::EncodeTo(std::string* output, uint32_t extent_start) {
   PutFixed32(output, kActiveExtentStart);
   PutFixed64(output, extent_start_);
 
-  if (is_sparse_) {
-    PutFixed32(output, kIsSparse);
-  }
+  
 
   for (uint32_t i = 0; i < linkfiles_.size(); i++) {
     PutFixed32(output, kLinkedFilename);
@@ -334,7 +332,7 @@ Status ZoneFile::PositionedRead(uint64_t offset, size_t n, Slice* result, char* 
   }
 
   if (r < 0) {
-    s = Status::Error("pread error\n");
+    s = Status::IOError("pread error\n");
     read = 0;
   }
 
@@ -554,7 +552,7 @@ void ZoneFile::SetActiveZone(Zone* zone) {
   active_zone_ = zone;
 }
 
-ZonedWritableFile::ZonedWritableFile(ZonedBlockDevice* zbd, bool buffered,
+ZonedWritableFile::ZonedWritableFile(ZonedBlockDevice* zbd, bool _buffered,
                              std::shared_ptr<ZoneFile> zoneFile) {
   assert(zoneFile->IsOpenForWR());
   wp = zoneFile->GetFileSize();
@@ -614,7 +612,7 @@ void ZonedWritableFile::SetWriteLifeTimeHint(WriteLifeTimeHint hint) {
   zoneFile_->SetWriteLifeTimeHint(hint);
 }
 // buffer에 data를 쓴다.
-Status ZonedWritableFile::BufferedWrite(const Slice& data) {
+Status ZonedWritableFile::BufferedWrite(const Slice& slice) {
   uint32_t data_left = slice.size();
   char* data = (char*)slice.data();
   Status s;
@@ -724,7 +722,7 @@ Status ZoneFile::MigrateData(uint64_t offset, uint32_t length, Zone* target_zone
     int r = zbd_->Read(buf, offset, read_sz + pad_sz, true);
     if (r < 0) {
       free(buf);
-      return Status::IOError(stderror(errno));
+      return Status::IOError(strerror(errno));
     }
 
     target_zone->Append(buf, r);

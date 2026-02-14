@@ -571,7 +571,7 @@ class PosixEnv : public Env {
   }
 
   Status NewWritableFile(const std::string& filename,
-                         WritableFile** result) override {
+                         WritableFile** result, WriteLifeTimeHint hint = WLTH_NOT_SET) override {
     int fd = ::open(filename.c_str(),
                     O_TRUNC | O_WRONLY | O_CREAT | kOpenBaseFlags, 0644);
     if (fd < 0) {

@@ -254,7 +254,7 @@ class InMemoryEnv : public EnvWrapper {
   }
 
   Status NewWritableFile(const std::string& fname,
-                         WritableFile** result) override {
+                         WritableFile** result, WriteLifeTimeHint hint = WLTH_NOT_SET) override {
     MutexLock lock(&mutex_);
     FileSystem::iterator it = file_map_.find(fname);
 

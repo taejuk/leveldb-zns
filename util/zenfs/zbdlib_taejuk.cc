@@ -44,7 +44,7 @@ Status ZbdlibBackend::CheckScheduler() {
 
   if(buf.find("[mq-deadline]") == std::string::npos) {
     f.close();
-    return Status::InvalidArgument("Current ZBD scheduler is not mq-deadline")
+    return Status::InvalidArgument("Current ZBD scheduler is not mq-deadline");
   }
 
   f.close();
@@ -79,7 +79,7 @@ Status ZbdlibBackend::Open(bool readonly, bool exclusive,
   if(readonly) {
     write_f_ = -1;
   } else {
-    write_f_ = zbd_open(filename.c_str(), O_WRONLY | O_DIRECT, &info);
+    write_f_ = zbd_open(filename_.c_str(), O_WRONLY | O_DIRECT, &info);
     if(write_f_ < 0) {
       return Status::InvalidArgument(
         "Failed to open zoned block device for write: " +

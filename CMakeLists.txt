@@ -193,6 +193,9 @@ target_sources(leveldb
     "util/options.cc"
     "util/random.h"
     "util/status.cc"
+    "util/zenfs/io_taejuk.cc"
+    "util/zenfs/zbdlib_taejuk.cc"
+    "util/zenfs/zdb_taejuk.cc"
 
   # Only CMake 3.3+ supports PUBLIC sources in targets exported by "install".
   $<$<VERSION_GREATER:CMAKE_VERSION,3.2>:PUBLIC>
@@ -270,6 +273,8 @@ if(HAVE_CLANG_THREAD_SAFETY)
     PUBLIC
       -Werror -Wthread-safety)
 endif(HAVE_CLANG_THREAD_SAFETY)
+
+target_link_libraries(leveldb zbd)
 
 if(HAVE_CRC32C)
   target_link_libraries(leveldb crc32c)

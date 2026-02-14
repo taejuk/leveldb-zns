@@ -56,7 +56,7 @@ class ErrorEnv : public EnvWrapper {
   ~ErrorEnv() override { delete target(); }
 
   Status NewWritableFile(const std::string& fname,
-                         WritableFile** result) override {
+                         WritableFile** result, WriteLifeTimeHint hint = WLTH_NOT_SET) override {
     if (writable_file_error_) {
       ++num_writable_file_errors_;
       *result = nullptr;

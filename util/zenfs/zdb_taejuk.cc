@@ -22,7 +22,7 @@
 #include "leveldb/env.h"
 #include "leveldb/status.h"
 #include "leveldb/zenfs/snapshot.h"
-#include "leveldb/zenfs/zdblib_taejuk.h"
+#include "leveldb/zenfs/zbdlib_taejuk.h"
 
 #define KB (1024)
 #define MB (1024 * KB)
@@ -177,7 +177,7 @@ Status ZonedBlockDevice::Open(bool readonly, bool exclusive) {
 
   zone_rep = zbd_be_->ListZones();
   if (zone_rep == nullptr || zone_rep->ZoneCount() != zbd_be_->GetNrZones()) {
-    Error(logger_, "Failed to list zones");
+    // Error(logger_, "Failed to list zones");
     return Status::IOError("Failed to list zones");
   }
 
@@ -267,13 +267,13 @@ void ZonedBlockDevice::LogZoneStats() {
 
   if (reclaimables_max_capacity == 0) reclaimables_max_capacity = 1;
 
-  Info(logger_,
-       "[Zonestats:time(s),used_cap(MB),reclaimable_cap(MB), "
-       "avg_reclaimable(%%), active(#), active_zones(#), open_zones(#)] %ld "
-       "%lu %lu %lu %lu %ld %ld\n",
-       time(NULL) - start_time_, used_capacity / MB, reclaimable_capacity / MB,
-       100 * reclaimable_capacity / reclaimables_max_capacity, active,
-       active_io_zones_.load(), open_io_zones_.load());
+  // Info(logger_,
+  //      "[Zonestats:time(s),used_cap(MB),reclaimable_cap(MB), "
+  //      "avg_reclaimable(%%), active(#), active_zones(#), open_zones(#)] %ld "
+  //      "%lu %lu %lu %lu %ld %ld\n",
+  //      time(NULL) - start_time_, used_capacity / MB, reclaimable_capacity / MB,
+  //      100 * reclaimable_capacity / reclaimables_max_capacity, active,
+  //      active_io_zones_.load(), open_io_zones_.load());
 }
 
 void ZonedBlockDevice::LogZoneUsage() {
@@ -281,8 +281,8 @@ void ZonedBlockDevice::LogZoneUsage() {
     int64_t used = z->used_capacity_;
 
     if (used > 0) {
-      Debug(logger_, "Zone 0x%lX used capacity: %ld bytes (%ld MB)\n",
-            z->start_, used, used / MB);
+      // Debug(logger_, "Zone 0x%lX used capacity: %ld bytes (%ld MB)\n",
+      //       z->start_, used, used / MB);
     }
   }
 }
@@ -330,7 +330,7 @@ void ZonedBlockDevice::LogGarbageInfo() {
     ss << zone_gc_stat[i] << " ";
   }
   ss << "]";
-  Info(logger_, "%s", ss.str().data());
+  // Info(logger_, "%s", ss.str().data());
 }
 
 ZonedBlockDevice::~ZonedBlockDevice() {
@@ -348,8 +348,8 @@ ZonedBlockDevice::~ZonedBlockDevice() {
 
 unsigned int GetLifeTimeDiff(WriteLifeTimeHint zone_lifetime, WriteLifeTimeHint file_lifetime) {
   assert(file_lifetime <= WLTH_EXTREME);
-  if ((file_lifetime == Env::WLTH_NOT_SET) ||
-      (file_lifetime == Env::WLTH_NONE)) {
+  if ((file_lifetime == WLTH_NOT_SET) ||
+      (file_lifetime == WLTH_NONE)) {
     if (file_lifetime == zone_lifetime) {
       return 0;
     } else {
@@ -416,7 +416,7 @@ void ZonedBlockDevice::WaitForOpenIOZoneToken(bool prioritized) {
   std::unique_lock<std::mutex> lk(zone_resources_mtx_);
   zone_resources_.wait(lk, [this, allocator_open_limit] {
     if (open_io_zones_.load() < allocator_open_limit) {
-      open_io_zone++;
+      open_io_zones_++;
       return true;
     } else {
       return false;
@@ -628,7 +628,7 @@ Status ZonedBlockDevice::TakeMigrateZone(Zone **out_zone,
   auto s =
       GetBestOpenZoneMatch(file_lifetime, &best_diff, out_zone, min_capacity);
   if (s.ok() && (*out_zone) != nullptr) {
-    Info(logger_, "TakeMigrateZone: %lu", (*out_zone)->start_);
+    // Info(logger_, "TakeMigrateZone: %lu", (*out_zone)->start_);
   } else {
     migrating_ = false;
   }
@@ -665,9 +665,9 @@ Status ZonedBlockDevice::AllocateIOZone(WriteLifeTimeHint file_lifetime, IOType 
 
     if (allocated_zone != nullptr) {
       if (!got_token && best_diff == LIFETIME_DIFF_COULD_BE_WORSE) {
-        Debug(logger_,
-              "Allocator: avoided a finish by relaxing lifetime diff "
-              "requirement\n");
+        // Debug(logger_,
+        //       "Allocator: avoided a finish by relaxing lifetime diff "
+        //       "requirement\n");
       } else {
         s = allocated_zone->CheckRelease();
         if (!s.ok()) {
@@ -707,10 +707,10 @@ Status ZonedBlockDevice::AllocateIOZone(WriteLifeTimeHint file_lifetime, IOType 
 
   if (allocated_zone) {
     assert(allocated_zone->IsBusy());
-    Debug(logger_,
-          "Allocating zone(new=%d) start: 0x%lx wp: 0x%lx lt: %d file lt: %d\n",
-          new_zone, allocated_zone->start_, allocated_zone->wp_,
-          allocated_zone->lifetime_, file_lifetime);
+    // Debug(logger_,
+    //       "Allocating zone(new=%d) start: 0x%lx wp: 0x%lx lt: %d file lt: %d\n",
+    //       new_zone, allocated_zone->start_, allocated_zone->wp_,
+    //       allocated_zone->lifetime_, file_lifetime);
   } else {
     PutOpenIOZoneToken();
   }

@@ -72,6 +72,7 @@ private:
 
   std::mutex writer_mtx_;
   std::atomic<int> readers_{0};
+  IOType io_type_;
 
 public:
   explicit ZoneFile(ZonedBlockDevice* zbd, uint64_t file_id,
@@ -82,7 +83,7 @@ public:
   void AcquireWRLock();
   bool TryAcquireWRLock();
   void ReleaseWRLock();
-
+  void SetIOType(IOType io_type);
   Status CloseWR();
   bool IsOpenForWR();
 

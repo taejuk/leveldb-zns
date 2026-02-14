@@ -49,17 +49,24 @@ class Slice;
 class WritableFile;
 
 enum WriteLifeTimeHint {
-  WLTH_NOT_SET = 0, // 기본값
-  WLTH_SHORT = 1,   // WAL (금방 삭제됨)
-  WLTH_MEDIUM = 2,  // L0, L1 SST 파일
-  WLTH_LONG = 3,    // 하위 레벨 SST 파일
-  WLTH_EXTREME = 4  // MANIFEST 파일 (매우 오래 남음)
+  WLTH_NOT_SET = 0,  // No hint information set
+  WLTH_NONE,         // No hints about write life time
+  WLTH_SHORT,        // Data written has a short life time
+  WLTH_MEDIUM,       // Data written has a medium life time
+  WLTH_LONG,         // Data written has a long life time
+  WLTH_EXTREME,
 };
 
 enum IOType {
-  kIoWrite,
-  kIoRead,
-  kIoUnknown
+  kData,
+  kFilter,
+  kIndex,
+  kMetadata,
+  kWAL,
+  kManifest,
+  kLog,
+  kUnknown,
+  kInvalid,
 };
 
 class LEVELDB_EXPORT Env {
