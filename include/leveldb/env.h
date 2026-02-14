@@ -48,6 +48,20 @@ class SequentialFile;
 class Slice;
 class WritableFile;
 
+enum WriteLifeTimeHint {
+  WLTH_NOT_SET = 0, // 기본값
+  WLTH_SHORT = 1,   // WAL (금방 삭제됨)
+  WLTH_MEDIUM = 2,  // L0, L1 SST 파일
+  WLTH_LONG = 3,    // 하위 레벨 SST 파일
+  WLTH_EXTREME = 4  // MANIFEST 파일 (매우 오래 남음)
+};
+
+enum IOType {
+  kIoWrite,
+  kIoRead,
+  kIoUnknown
+};
+
 class LEVELDB_EXPORT Env {
  public:
   Env();
@@ -93,7 +107,7 @@ class LEVELDB_EXPORT Env {
   //
   // The returned file will only be accessed by one thread at a time.
   virtual Status NewWritableFile(const std::string& fname,
-                                 WritableFile** result) = 0;
+                                 WritableFile** result, WriteLifeTimeHint hint = WLTH_NOT_SET) = 0;
 
   // Create an object that either appends to an existing file, or
   // writes to a new file (if the file does not exist to begin with).
@@ -349,8 +363,8 @@ class LEVELDB_EXPORT EnvWrapper : public Env {
                              RandomAccessFile** r) override {
     return target_->NewRandomAccessFile(f, r);
   }
-  Status NewWritableFile(const std::string& f, WritableFile** r) override {
-    return target_->NewWritableFile(f, r);
+  Status NewWritableFile(const std::string& f, WritableFile** r, WriteLifeTimeHint hint = WLTH_NOT_SET) override {
+    return target_->NewWritableFile(f, r, hint);
   }
   Status NewAppendableFile(const std::string& f, WritableFile** r) override {
     return target_->NewAppendableFile(f, r);

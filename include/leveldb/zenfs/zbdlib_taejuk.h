@@ -1,0 +1,84 @@
+#pragma once
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+
+#include "leveldb/status.h"
+#include "leveldb/zenfs/zbd_taejuk.h"
+
+namespace leveldb {
+
+class ZbdlibBackend : public ZonedBlockDeviceBackend {
+  private:
+    std::string filename_;
+    int read_f_;
+    int read_direct_f_;
+    int write_f_;
+
+  public:
+    explicit ZbdlibBackend(std::string bdevname);
+    ~ZbdlibBackend() {
+      zbd_close(read_f_);
+      zbd_close(read_direct_f_);
+      zbd_close(write_f_);
+    }
+
+    Status Open(bool readonly, bool exclusive, unsigned int *max_active_zones,
+                  unsigned int *max_open_zones);
+    std::unique_ptr<ZoneList> ListZones();
+    Status Reset(uint64_t start, bool *offline, uint64_t *max_capacity);
+    Status Finish(uint64_t start);
+    Status Close(uint64_t start);
+    int Read(char *buf, int size, uint64_t pos, bool direct);
+    int Write(char *data, uint32_t size, uint64_t pos);
+    int InvalidateCache(uint64_t pos, uint64_t size);
+    // 해당 zone의 idx가 SWR type인지 확인
+    bool ZoneIsSwr(std::unique_ptr<ZoneList> &zones, unsigned int idx) {
+      struct zbd_zone *z = &((struct zbd_zone *)zones->GetData())[idx];
+      return zbd_zone_type(z) == ZBD_ZONE_TYPE_SWR;
+    };
+
+    bool ZoneIsOffline(std::unique_ptr<ZoneList> &zones, unsigned int idx) {
+      struct zbd_zone *z = &((struct zbd_zone *)zones->GetData())[idx];
+      return zbd_zone_offline(z);
+    };
+
+    bool ZoneIsWritable(std::unique_ptr<ZoneList> &zones, unsigned int idx) {
+      struct zbd_zone *z = &((struct zbd_zone *)zones->GetData())[idx];
+      return !(zbd_zone_full(z) || zbd_zone_offline(z) || zbd_zone_rdonly(z));
+    };
+
+    bool ZoneIsActive(std::unique_ptr<ZoneList> &zones, unsigned int idx) {
+      struct zbd_zone *z = &((struct zbd_zone *)zones->GetData())[idx];
+      return zbd_zone_imp_open(z) || zbd_zone_exp_open(z) || zbd_zone_closed(z);
+    };
+
+    bool ZoneIsOpen(std::unique_ptr<ZoneList> &zones, unsigned int idx) {
+      struct zbd_zone *z = &((struct zbd_zone *)zones->GetData())[idx];
+      return zbd_zone_imp_open(z) || zbd_zone_exp_open(z);
+    };
+
+    uint64_t ZoneStart(std::unique_ptr<ZoneList> &zones, unsigned int idx) {
+      struct zbd_zone *z = &((struct zbd_zone *)zones->GetData())[idx];
+      return zbd_zone_start(z);
+    };
+
+    uint64_t ZoneMaxCapacity(std::unique_ptr<ZoneList> &zones, unsigned int idx) {
+      struct zbd_zone *z = &((struct zbd_zone *)zones->GetData())[idx];
+      return zbd_zone_capacity(z);
+    };
+
+    uint64_t ZoneWp(std::unique_ptr<ZoneList> &zones, unsigned int idx) {
+      struct zbd_zone *z = &((struct zbd_zone *)zones->GetData())[idx];
+      return zbd_zone_wp(z);
+    };
+
+    std::string GetFilename() { return filename_; }
+
+  private:
+    Status CheckScheduler();
+    std::string ErrorToString(int err);
+    
+};
+
+}

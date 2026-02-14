@@ -5,6 +5,9 @@
 cmake_minimum_required(VERSION 3.9)
 # Keep the version below in sync with the one in db.h
 project(leveldb VERSION 1.23.0 LANGUAGES C CXX)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 
 # C standard can be overridden when this is used as a sub-project.
 if(NOT CMAKE_C_STANDARD)
