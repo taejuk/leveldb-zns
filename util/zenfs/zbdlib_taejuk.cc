@@ -173,7 +173,4 @@ int ZbdlibBackend::Write(char *data, uint32_t size, uint64_t pos) {
   return pwrite(write_f_, data, size, pos);
 }
 
-
-
-
 }
