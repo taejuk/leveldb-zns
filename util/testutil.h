@@ -66,7 +66,7 @@ class ErrorEnv : public EnvWrapper {
   }
 
   Status NewAppendableFile(const std::string& fname,
-                           WritableFile** result) override {
+                           WritableFile** result, WriteLifeTimeHint hint) override {
     if (writable_file_error_) {
       ++num_writable_file_errors_;
       *result = nullptr;

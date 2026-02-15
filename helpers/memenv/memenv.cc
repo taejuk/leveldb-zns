@@ -274,7 +274,7 @@ class InMemoryEnv : public EnvWrapper {
   }
 
   Status NewAppendableFile(const std::string& fname,
-                           WritableFile** result) override {
+                           WritableFile** result, WriteLifeTimeHint hint) override {
     MutexLock lock(&mutex_);
     FileState** sptr = &file_map_[fname];
     FileState* file = *sptr;

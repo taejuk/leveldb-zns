@@ -20,6 +20,12 @@
 #define DEFAULT_TAEJUK_LOG_PATH "/tmp/"
 
 namespace leveldb {
+
+inline bool ends_with(std::string const& value, std::string const& ending) {
+  if (ending.size() > value.size()) return false;
+  return std::equal(ending.rbegin(), ending.rend(), value.rbegin());
+}
+
 Status Superblock::DecodeFrom(Slice* input) {
   if (input->size() != ENCODED_SIZE) {
     return Status::Corruption("ZenFS Superblock",
@@ -166,7 +172,7 @@ Status TaejukMetaLog::ReadRecord(Slice* record, std::string* scratch) {
   uint32_t record_sz = 0;
   uint32_t record_crc = 0;
   uint32_t actual_crc;
-  IOStatus s;
+  Status s;
 
   scratch->clear();
   record->clear();
@@ -179,7 +185,7 @@ Status TaejukMetaLog::ReadRecord(Slice* record, std::string* scratch) {
 
   if (header.size() == 0) {
     record->clear();
-    return IOStatus::OK();
+    return Status::OK();
   }
 
   GetFixed32(&header, &record_crc);
@@ -204,9 +210,22 @@ Status TaejukMetaLog::ReadRecord(Slice* record, std::string* scratch) {
   return Status::OK();
 }
 
-ZonedEnv::ZonedEnv(ZonedBlockDevice* zbd, Env* target = Env::Default()):zbd_(zbd), EnvWrapper(target) {
+ZonedEnv::ZonedEnv(ZonedBlockDevice* zbd, Env* target):zbd_(zbd), EnvWrapper(target) {
   next_file_id_ = 1;
-  metadata_writer_.zenFS = this;
+  metadata_writer_.env = this;
+}
+
+Status ZonedEnv::Repair() {
+  std::map<std::string, std::shared_ptr<ZoneFile>>::iterator it;
+  for (it = files_.begin(); it != files_.end(); it++) {
+    std::shared_ptr<ZoneFile> zFile = it->second;
+    if (zFile->HasActiveExtent()) {
+      Status s = zFile->Recover();
+      if (!s.ok()) return s;
+    }
+  }
+
+  return Status::OK();
 }
 
 ZonedEnv::~ZonedEnv() {
@@ -313,7 +332,7 @@ Status ZonedEnv::Mount(bool readonly) {
 
   return Status::OK();
 }
-Status ZonedEnv::MkFS(std::string aux_fs_path, uint32_t finish_threshold, bool enable_gc){
+Status ZonedEnv::MkFS(std::string aux_fs_p, uint32_t finish_threshold, bool enable_gc){
   std::vector<Zone*> metazones = zbd_->GetMetaZones();
   std::unique_ptr<TaejukMetaLog> log;
   Zone* meta_zone = nullptr;
@@ -359,8 +378,8 @@ Status ZonedEnv::MkFS(std::string aux_fs_path, uint32_t finish_threshold, bool e
 
   return Status::OK();
 }
-std::map<std::string, Env::WriteLifeTimeHint> ZonedEnv::GetWriteLifeTimeHints(){
-  std::map<std::string, Env::WriteLifeTimeHint> hint_map;
+std::map<std::string, WriteLifeTimeHint> ZonedEnv::GetWriteLifeTimeHints(){
+  std::map<std::string, WriteLifeTimeHint> hint_map;
 
   for (auto it = files_.begin(); it != files_.end(); it++) {
     std::shared_ptr<ZoneFile> zoneFile = it->second;
@@ -387,11 +406,11 @@ Status ZonedEnv::NewRandomAccessFile(const std::string& filename, RandomAccessFi
   *result = new ZonedRandomAccessFile(files_[fname]);
   return Status::OK();
 }
-Status ZonedEnv::NewWritableFile(const std::string& filename, WritableFile** result,WriteLifeTimeHint hint = WLTH_NOT_SET){
+Status ZonedEnv::NewWritableFile(const std::string& filename, WritableFile** result,WriteLifeTimeHint hint){
   std::string fname = FormatPathLexically(filename);
   return OpenWritableFile(fname, result, hint, false);
 }
-Status ZonedEnv::NewAppendableFile(const std::string& filename, WritableFile** result,WriteLifeTimeHint hint = WLTH_NOT_SET){
+Status ZonedEnv::NewAppendableFile(const std::string& filename, WritableFile** result,WriteLifeTimeHint hint){
   std::string fname = FormatPathLexically(filename);
   return OpenWritableFile(fname, result, hint, true);
 }
@@ -421,8 +440,8 @@ Status ZonedEnv::OpenWritableFile(const std::string& filename, WritableFile** re
     zoneFile->AddLinkName(fname);
 
     if (hint == WLTH_NOT_SET) {
-      if (fname.find(".log") != std::string::npos) hint = Env::WLTH_SHORT;
-      else hint = Env::WLTH_LONG;
+      if (fname.find(".log") != std::string::npos) hint = WLTH_SHORT;
+      else hint = WLTH_LONG;
     }
     zoneFile->SetWriteLifeTimeHint(hint);
     s = SyncFileMetadataNoLock(zoneFile);
@@ -445,7 +464,7 @@ bool ZonedEnv::FileExists(const std::string& filename) {
   if (GetFile(fname) == nullptr) {
     return target()->FileExists(ToAuxPath(fname));
   } else {
-    return Status::OK();
+    return true;
   }
 }
 
@@ -514,7 +533,8 @@ Status ZonedEnv::GetChildren(const std::string& dir, std::vector<std::string>* r
 Status ZonedEnv::DeleteFile(const std::string& fname) {
   Status s;
   files_mtx_.lock();
-  s = DeleteFileNoLock(fname);
+  std::string filename = fname;
+  s = DeleteFileNoLock(filename);
   files_mtx_.unlock();
   if (s.ok()) s = zbd_->ResetUnusedIOZones();
   return s;
@@ -565,12 +585,12 @@ Status ZonedEnv::NewLogger(const std::string& fname, Logger** result) {
   return Status::OK();
 }
 
-Status ZonedEnv::SyncFileMetadata(ZoneFile* zoneFile, bool replace = false) {
+Status ZonedEnv::SyncFileMetadata(ZoneFile* zoneFile, bool replace) {
   std::lock_guard<std::mutex> lock(files_mtx_);
   return SyncFileMetadataNoLock(zoneFile, replace);
 }
 
-Status ZonedEnv::SyncFileMetadataNoLock(ZoneFile* zoneFile, bool replace = false) {
+Status ZonedEnv::SyncFileMetadataNoLock(ZoneFile* zoneFile, bool replace) {
   std::string fileRecord;
   std::string output;
   Status s;
@@ -678,7 +698,7 @@ Status ZonedEnv::MigrateFileExtents(const std::string& fname, const std::vector<
 
     ext->start_ = target_start;
     ext->zone_ = target_zone;
-    ext->zone_->used_capacity_ += ext->length;
+    ext->zone_->used_capacity_ += ext->length_;
 
     zbd_->ReleaseMigrateZone(target_zone);
   }
@@ -772,7 +792,8 @@ Status ZonedEnv::RenameFileNoLock(const std::string& src_path, const std::string
     s = source_file->RenameLink(source_path, dest_path);
     if (!s.ok()) return s;
     files_.erase(source_path);
-
+    //
+    //files_[dest_path] = source_file;
     files_.insert(std::make_pair(dest_path, source_file));
 
     s = SyncFileMetadataNoLock(source_file);
@@ -781,10 +802,64 @@ Status ZonedEnv::RenameFileNoLock(const std::string& src_path, const std::string
       files_.erase(dest_path);
       s = source_file->RenameLink(dest_path, source_path);
       if (!s.ok()) return s;
+      //files_[source_path]
       files_.insert(std::make_pair(source_path, source_file));
     }
   } else {
     s = RenameAuxPathNoLock(source_path, dest_path);
+  }
+
+  return s;
+}
+
+Status ZonedEnv::RenameAuxPathNoLock(const std::string& source_path,
+                                    const std::string& dest_path) {
+  Status s;
+  std::vector<std::string> children;
+  std::vector<std::string> renamed_children;
+
+  s = target()->RenameFile(ToAuxPath(source_path), ToAuxPath(dest_path));
+
+  if (!s.ok()) {
+    return s;
+  }
+
+  GetTaejukChildrenNoLock(source_path, true, &children);
+
+  for (const auto& child : children) {
+    s = RenameChildNoLock(source_path, dest_path, child);
+    if (!s.ok()) {
+      Status failed_rename = s;
+      s = RollbackAuxDirRenameNoLock(source_path, dest_path, renamed_children);
+      if (!s.ok()) {
+        return s;
+      }
+      return failed_rename;
+    }
+    renamed_children.push_back(child);
+  }
+
+  return s;
+}
+
+Status ZonedEnv::RollbackAuxDirRenameNoLock(
+    const std::string& source_path, const std::string& dest_path,
+    const std::vector<std::string>& renamed_children) {
+  Status s;
+
+  for (const auto& rollback_child : renamed_children) {
+    s = RenameChildNoLock(dest_path, source_path, rollback_child);
+    if (!s.ok()) {
+      return Status::Corruption(
+          "RollbackAuxDirRenameNoLock: Failed to roll back directory rename");
+    }
+  }
+
+  s = target()->RenameFile(ToAuxPath(dest_path), ToAuxPath(source_path));
+  if (!s.ok()) {
+    return Status::Corruption(
+        "RollbackAuxDirRenameNoLock: Failed to roll back auxiliary path "
+        "renaming");
   }
 
   return s;
@@ -804,6 +879,13 @@ Status ZonedEnv::WriteSnapshotLocked(TaejukMetaLog* meta_log){
   }
   return s;
 }
+
+Status ZonedEnv::RenameChildNoLock(std::string const& source_dir, std::string const& dest_dir,std::string const& child) {
+  std::string source_child = (fs::path(source_dir) / fs::path(child)).string();
+  std::string dest_child = (fs::path(dest_dir) / fs::path(child)).string();
+  return RenameFileNoLock(source_child, dest_child);
+}
+
 Status ZonedEnv::WriteEndRecord(TaejukMetaLog* meta_log){
   std::string endRecord;
 
@@ -881,7 +963,7 @@ void ZonedEnv::EncodeSnapshotTo(std::string* output){
   }
   PutLengthPrefixedSlice(output, Slice(files_string));
 }
-void ZonedEnv::EncodeFileDeletionTo(ZoneFile* zoneFile, std::string* output, std::string linkf){
+void ZonedEnv::EncodeFileDeletionTo(std::shared_ptr<ZoneFile> zoneFile, std::string* output, std::string linkf){
   std::string file_string;
 
   PutFixed64(&file_string, zoneFile->GetID());
@@ -911,7 +993,7 @@ Status ZonedEnv::DecodeSnapshotFrom(Slice* input){
 
   return Status::OK();
 }
-Status ZonedEnv::DecodeFileUpdateFrom(Slice* slice, bool replace = false){
+Status ZonedEnv::DecodeFileUpdateFrom(Slice* slice, bool replace){
   std::shared_ptr<ZoneFile> update(new ZoneFile(zbd_, 0, &metadata_writer_));
   uint64_t id;
   Status s;
@@ -951,11 +1033,11 @@ Status ZonedEnv::DecodeFileUpdateFrom(Slice* slice, bool replace = false){
 
   return Status::OK();
 }
-Status ZonedEnv::DecodeFileDeletionFrom(Slice* slice){
+Status ZonedEnv::DecodeFileDeletionFrom(Slice* input){
   uint64_t fileID;
   std::string fileName;
   Slice slice;
-  IOStatus s;
+  Status s;
 
   if (!GetFixed64(input, &fileID))
     return Status::Corruption("Zone file deletion: file id missing");
@@ -988,7 +1070,7 @@ Status ZonedEnv::RecoverFrom(TaejukMetaLog* log){
   bool done = false;
 
   while (!done) {
-    IOStatus rs = log->ReadRecord(&record, &scratch);
+    Status rs = log->ReadRecord(&record, &scratch);
     if (!rs.ok()) {
       return Status::Corruption("ZenFS", "Metadata corruption");
     }
@@ -1049,12 +1131,8 @@ std::string ZonedEnv::FormatPathLexically(fs::path filepath){
 }
 
 Status NewZonedEnv(Env** env, const std::string& bdevname) {
-  return Status::OK()
+  return Status::OK();
 }
 
 }
 
-inline bool ends_with(std::string const& value, std::string const& ending) {
-  if (ending.size() > value.size()) return false;
-  return std::equal(ending.rbegin(), ending.rend(), value.rbegin());
-}

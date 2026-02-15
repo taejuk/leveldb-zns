@@ -18,16 +18,17 @@ void PutFixed64(std::string* dst, uint64_t value) {
   dst->append(buf, sizeof(buf));
 }
 
-void GetFixed32(Slice* input, uint32_t* value) {
-  if (input->size() < sizeof(uint32_t)) return ;
+bool GetFixed32(Slice* input, uint32_t* value) {
+  if (input->size() < sizeof(uint32_t)) return false;
   *value = DecodeFixed32(input->data());
   input->remove_prefix(sizeof(uint32_t));
+  return true;
 }
-
-void GetFixed64(Slice* input, uint64_t* value) {
-  if (input->size() < sizeof(uint64_t)) return ;
+bool GetFixed64(Slice* input, uint64_t* value) {
+  if (input->size() < sizeof(uint64_t)) return false;
   *value = DecodeFixed64(input->data());
   input->remove_prefix(sizeof(uint64_t));
+  return true;
 }
 
 char* EncodeVarint32(char* dst, uint32_t v) {

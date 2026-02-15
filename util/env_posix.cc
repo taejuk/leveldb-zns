@@ -584,7 +584,7 @@ class PosixEnv : public Env {
   }
 
   Status NewAppendableFile(const std::string& filename,
-                           WritableFile** result) override {
+                           WritableFile** result,WriteLifeTimeHint hint) override {
     int fd = ::open(filename.c_str(),
                     O_APPEND | O_WRONLY | O_CREAT | kOpenBaseFlags, 0644);
     if (fd < 0) {

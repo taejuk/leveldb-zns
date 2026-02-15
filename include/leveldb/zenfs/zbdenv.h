@@ -3,7 +3,7 @@
 namespace fs = std::filesystem;
 #include <memory>
 #include <thread>
-
+#include <map>
 #include "leveldb/zenfs/io_taejuk.h"
 #include "leveldb/env.h"
 #include "leveldb/status.h"
@@ -40,7 +40,8 @@ class Superblock {
 
   Superblock(ZonedBlockDevice* zbd, std::string aux_fs_path = "",
              uint32_t finish_threshold = 0, bool enable_gc = false) {
-    std::string uuid = Env::Default()->GenerateUniqueId();
+    std::string uuid = "test";
+    //std::string uuid = Env::Default()->GenerateUniqueId();
     int uuid_len = std::min(uuid.length(), sizeof(uuid_) - 1);
     memcpy((void*)uuid_, uuid.c_str(), uuid_len);
     magic_ = MAGIC;
@@ -59,7 +60,6 @@ class Superblock {
   Status DecodeFrom(Slice* input);
   void EncodeTo(std::string* output);
   Status CompatibleWith(ZonedBlockDevice* zbd);
-
   void GetReport(std::string* reportString);
 
   uint32_t GetSeq() { return sequence_; }
@@ -89,16 +89,16 @@ class TaejukMetaLog {
   virtual ~TaejukMetaLog() {
     bool ok = zone_->Release();
     assert(ok);
-    void(ok);
+    (void)ok;
   }
 
-  IOStatus AddRecord(const Slice& slice);
-  IOStatus ReadRecord(Slice* record, std::string* scratch);
+  Status AddRecord(const Slice& slice);
+  Status ReadRecord(Slice* record, std::string* scratch);
 
   Zone* GetZone() { return zone_; };
 
  private:
-  IOStatus Read(Slice* slice);
+  Status Read(Slice* slice);
 };
 
 class LEVELDB_EXPORT ZonedEnv : public EnvWrapper {
@@ -108,7 +108,7 @@ class LEVELDB_EXPORT ZonedEnv : public EnvWrapper {
 
   Status Mount(bool readonly);
   Status MkFS(std::string aux_fs_path, uint32_t finish_threshold, bool enable_gc);
-  std::map<std::string, Env::WriteLifeTimeHint> GetWriteLifeTimeHints();
+  std::map<std::string, WriteLifeTimeHint> GetWriteLifeTimeHints();
   
   Status NewSequentialFile(const std::string& fname, SequentialFile** result) override;
   Status NewRandomAccessFile(const std::string& fname, RandomAccessFile** result) override;
@@ -124,12 +124,14 @@ class LEVELDB_EXPORT ZonedEnv : public EnvWrapper {
   Status DeleteFile(const std::string& fname) override;
   Status GetFileSize(const std::string& fname, uint64_t* file_size) override;
   Status RenameFile(const std::string& src, const std::string& target) override;
-  
+  Status RenameChildNoLock(std::string const& source_dir, std::string const& dest_dir,std::string const& child);
+
   Status CreateDir(const std::string& d) {
     return target()->CreateDir(ToAuxPath(d));
   }
   Status CreateDirIfMissing(const std::string& d) {
-    return target()->CreateDirIfMissing(ToAuxPath(d));
+    return Status::OK();
+    //return target()->CreateDirIfMissing(ToAuxPath(d));
   }
   Status DeleteDir(const std::string& dirname) override;
   Status LockFile(const std::string& fname, FileLock** lock) override;
@@ -153,7 +155,7 @@ class LEVELDB_EXPORT ZonedEnv : public EnvWrapper {
 
   ZonedBlockDevice* zbd_;
   
-  std::map<std::string, ZoneFile*> files_;
+  std::map<std::string, std::shared_ptr<ZoneFile>> files_;
   std::mutex files_mtx_;
   
   std::atomic<uint64_t> next_file_id_;
@@ -163,8 +165,8 @@ class LEVELDB_EXPORT ZonedEnv : public EnvWrapper {
   std::mutex metadata_sync_mtx_;
   std::unique_ptr<Superblock> superblock_;
 
-  std::thread gc_thread_;
-  std::atomic<bool> run_gc_worker_;
+  std::unique_ptr<std::thread> gc_worker_ = nullptr;
+  bool run_gc_worker_ = false;
   const uint64_t GC_START_LEVEL = 20; 
   const uint64_t GC_SLOPE = 3;
   
@@ -192,15 +194,20 @@ class LEVELDB_EXPORT ZonedEnv : public EnvWrapper {
   }
   Status SyncFileExtents(ZoneFile* zoneFile, std::vector<ZoneExtent*> new_extents);
   Status RenameFileNoLock(const std::string& src, const std::string& target);
+  Status RenameAuxPathNoLock(const std::string& source_path, const std::string& dest_path);
+  Status RollbackAuxDirRenameNoLock(
+    const std::string& source_path, const std::string& dest_path,
+    const std::vector<std::string>& renamed_children);
 
   Status WriteSnapshotLocked(TaejukMetaLog* meta_log);
   Status WriteEndRecord(TaejukMetaLog* meta_log);
   Status RollMetaZoneLocked();
   Status PersistSnapshot(TaejukMetaLog* meta_writer);
   Status PersistRecord(std::string record);
+  Status Repair();
 
   void EncodeSnapshotTo(std::string* output);
-  void EncodeFileDeletionTo(ZoneFile* zoneFile, std::string* output, std::string linkf);
+  void EncodeFileDeletionTo(std::shared_ptr<ZoneFile> zoneFile, std::string* output, std::string linkf);
   
   Status DecodeSnapshotFrom(Slice* input);
   Status DecodeFileUpdateFrom(Slice* slice, bool replace = false);
