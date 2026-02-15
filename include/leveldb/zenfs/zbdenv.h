@@ -177,9 +177,9 @@ class LEVELDB_EXPORT ZonedEnv : public EnvWrapper {
   void ClearFiles();
   std::string FormatPathLexically(fs::path filepath);
   
-  std::shared_ptr<ZoneFile> GetFileNoLock(const std::string fname);
+  std::shared_ptr<ZoneFile> GetFileNoLock(std::string fname);
   std::shared_ptr<ZoneFile> GetFile(std::string fname);
-  Status DeleteFileNoLock(const std::string& fname);
+  Status DeleteFileNoLock(std::string& fname);
   Status SyncFileMetadataNoLock(ZoneFile* zoneFile, bool replace = false);
   Status SyncFileMetadataNoLock(std::shared_ptr<ZoneFile> zoneFile,
                                   bool replace = false) {
@@ -190,6 +190,7 @@ class LEVELDB_EXPORT ZonedEnv : public EnvWrapper {
                             bool replace = false) {
     return SyncFileMetadata(zoneFile.get(), replace);
   }
+  Status SyncFileExtents(ZoneFile* zoneFile, std::vector<ZoneExtent*> new_extents);
   Status RenameFileNoLock(const std::string& src, const std::string& target);
 
   Status WriteSnapshotLocked(TaejukMetaLog* meta_log);

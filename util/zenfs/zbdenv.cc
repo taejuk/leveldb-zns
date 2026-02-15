@@ -636,13 +636,124 @@ Status ZonedEnv::MigrateExtents(const std::vector<ZoneExtentSnapshot*>& extents)
 Status ZonedEnv::MigrateFileExtents(const std::string& fname, const std::vector<ZoneExtentSnapshot*>& migrate_exts){
   Status s = Status::OK();
   auto zfile = GetFile(fname);
-  
+  if (zfile == nullptr) return Status::OK();
+
+  if (!zfile->TryAcquireWRLock()) return Status::OK();
+
+  std::vector<ZoneExtent*> new_extent_list;
+  std::vector<ZoneExtent*> extents = zfile->GetExtents();
+  for (const auto* ext : extents) {
+    new_extent_list.push_back(new ZoneExtent(ext->start_, ext->length_, ext->zone_));
+  }
+
+  for (ZoneExtent* ext : new_extent_list) {
+    auto it = std::find_if(migrate_exts.begin(), migrate_exts.end(),
+                           [&](const ZoneExtentSnapshot* ext_snapshot) {
+                             return ext_snapshot->start == ext->start_ &&
+                                    ext_snapshot->length == ext->length_;
+                           });
+    
+    if (it == migrate_exts.end()) continue;
+
+    Zone* target_zone = nullptr;
+    
+    s = zbd_->TakeMigrateZone(&target_zone, zfile->GetWriteLifeTimeHint(), ext->length_);
+
+    if(!s.ok()) continue;
+
+    if (target_zone == nullptr) {
+      zbd_->ReleaseMigrateZone(target_zone);
+      continue;
+    }
+
+    uint64_t target_start = target_zone->wp_;
+
+    zfile->MigrateData(ext->start_, ext->length_, target_zone);
+    zbd_->AddGCBytesWritten(ext->length_);
+
+    if(GetFileNoLock(fname) == nullptr) {
+      zbd_->ReleaseMigrateZone(target_zone);
+      break;
+    }
+
+    ext->start_ = target_start;
+    ext->zone_ = target_zone;
+    ext->zone_->used_capacity_ += ext->length;
+
+    zbd_->ReleaseMigrateZone(target_zone);
+  }
+
+  SyncFileExtents(zfile.get(), new_extent_list);
+  zfile->ReleaseWRLock();
+
+  return Status::OK();
 }
 
-std::shared_ptr<ZoneFile> ZonedEnv::GetFileNoLock(const std::string fname){}
-std::shared_ptr<ZoneFile> ZonedEnv::GetFile(std::string fname){}
-Status ZonedEnv::DeleteFileNoLock(const std::string& fname){}
-Status ZonedEnv::SyncFileMetadataNoLock(ZoneFile* zoneFile, bool replace = false){}
+Status ZonedEnv::SyncFileExtents(ZoneFile* zoneFile, std::vector<ZoneExtent*> new_extents) {
+  Status s;
+
+  std::vector<ZoneExtent*> old_extents = zoneFile->GetExtents();
+  zoneFile->ReplaceExtentList(new_extents);
+  zoneFile->MetadataUnsynced();
+  s = SyncFileMetadata(zoneFile, true);
+
+  if(!s.ok()) return s;
+
+  for (size_t i = 0; i < new_extents.size(); ++i) {
+    ZoneExtent* old_ext = old_extents[i];
+    if (old_ext->start_ != new_extents[i]->start_) {
+      old_ext->zone_->used_capacity_ -= old_ext->length_;
+    }
+    delete old_ext;
+  }
+
+  return Status::OK();
+}
+
+std::shared_ptr<ZoneFile> ZonedEnv::GetFileNoLock(std::string fname){
+  std::shared_ptr<ZoneFile> zoneFile(nullptr);
+  fname = FormatPathLexically(fname);
+  if (files_.find(fname) != files_.end()) {
+    zoneFile = files_[fname];
+  }
+  return zoneFile;
+}
+std::shared_ptr<ZoneFile> ZonedEnv::GetFile(std::string fname){
+  std::shared_ptr<ZoneFile> zoneFile(nullptr);
+  std::lock_guard<std::mutex> lock(files_mtx_);
+  zoneFile = GetFileNoLock(fname);
+  return zoneFile;
+}
+
+Status ZonedEnv::DeleteFileNoLock(std::string& fname){
+  std::shared_ptr<ZoneFile> zoneFile(nullptr);
+  Status s;
+
+  fname = FormatPathLexically(fname);
+  zoneFile = GetFileNoLock(fname);
+  if (zoneFile != nullptr) {
+    std::string record;
+
+    files_.erase(fname);
+    s = zoneFile->RemoveLinkName(fname);
+    if (!s.ok()) return s;
+    EncodeFileDeletionTo(zoneFile, &record, fname);
+    s = PersistRecord(record);
+    if (!s.ok()) {
+      files_.insert(std::make_pair(fname.c_str(), zoneFile));
+      zoneFile->AddLinkName(fname);
+    } else {
+      if (zoneFile->GetNrLinks() > 0) return s;
+      zoneFile->SetDeleted();
+      zoneFile.reset();
+    }
+  } else {
+    s = target()->DeleteFile(ToAuxPath(fname));
+  }
+
+  return s;
+}
+
 Status ZonedEnv::RenameFileNoLock(const std::string& src_path, const std::string& dst_path){
   std::shared_ptr<ZoneFile> source_file(nullptr);
   std::shared_ptr<ZoneFile> existing_dest_file(nullptr);
@@ -679,23 +790,267 @@ Status ZonedEnv::RenameFileNoLock(const std::string& src_path, const std::string
   return s;
 }
 
-Status ZonedEnv::WriteSnapshotLocked(TaejukMetaLog* meta_log){}
-Status ZonedEnv::WriteEndRecord(TaejukMetaLog* meta_log){}
-Status ZonedEnv::RollMetaZoneLocked(){}
-Status ZonedEnv::PersistSnapshot(TaejukMetaLog* meta_writer){}
-Status ZonedEnv::PersistRecord(std::string record){}
+Status ZonedEnv::WriteSnapshotLocked(TaejukMetaLog* meta_log){
+  Status s;
+  std::string snapshot;
 
-void ZonedEnv::EncodeSnapshotTo(std::string* output){}
-void ZonedEnv::EncodeFileDeletionTo(ZoneFile* zoneFile, std::string* output, std::string linkf){}
+  EncodeSnapshotTo(&snapshot);
+  s = meta_log->AddRecord(snapshot);
+  if (s.ok()) {
+    for (auto it = files_.begin(); it != files_.end(); it++) {
+      std::shared_ptr<ZoneFile> zoneFile = it->second;
+      zoneFile->MetadataSynced();
+    }
+  }
+  return s;
+}
+Status ZonedEnv::WriteEndRecord(TaejukMetaLog* meta_log){
+  std::string endRecord;
 
-Status ZonedEnv::DecodeSnapshotFrom(Slice* input){}
-Status ZonedEnv::DecodeFileUpdateFrom(Slice* slice, bool replace = false){}
-Status ZonedEnv::DecodeFileDeletionFrom(Slice* slice){}
-Status ZonedEnv::RecoverFrom(TaejukMetaLog* log){}
+  PutFixed32(&endRecord, kEndRecord);
+  return meta_log->AddRecord(endRecord);
+}
+Status ZonedEnv::RollMetaZoneLocked(){
+  std::unique_ptr<TaejukMetaLog> new_meta_log, old_meta_log;
+  Zone* new_meta_zone = nullptr;
+  Status s;
 
-std::string ZonedEnv::FormatPathLexically(fs::path filepath);
+  Status status = zbd_->AllocateMetaZone(&new_meta_zone);
+  if (!status.ok()) return status;
 
-Status NewZonedEnv(Env** env, const std::string& bdevname) {}
+  if(!new_meta_zone) {
+    return Status::NoSpace("Out of metadata zones");
+  }
+
+  new_meta_log.reset(new TaejukMetaLog(zbd_, new_meta_zone));
+
+  old_meta_log.swap(meta_log_);
+  meta_log_.swap(new_meta_log);
+
+  if (old_meta_log->GetZone()->GetCapacityLeft())
+    WriteEndRecord(old_meta_log.get());
+  if (old_meta_log->GetZone()->GetCapacityLeft())
+    old_meta_log->GetZone()->Finish();
+
+  std::string super_string;
+  superblock_->EncodeTo(&super_string);
+
+  s = meta_log_->AddRecord(super_string);
+  if (!s.ok()) {
+    return Status::IOError("Failed writing a new superblock");
+  }
+
+  s = WriteSnapshotLocked(meta_log_.get());
+
+  /* We've rolled successfully, we can reset the old zone now */
+  if (s.ok()) old_meta_log->GetZone()->Reset();
+
+  return s;
+}
+Status ZonedEnv::PersistSnapshot(TaejukMetaLog* meta_writer){
+  Status s;
+
+  std::lock_guard<std::mutex> file_lock(files_mtx_);
+  std::lock_guard<std::mutex> metadata_lock(metadata_sync_mtx_);
+
+  s = WriteSnapshotLocked(meta_writer);
+  if(s.IsNoSpace()) {
+    s = RollMetaZoneLocked();
+  }
+  return s;
+}
+Status ZonedEnv::PersistRecord(std::string record){
+  Status s;
+
+  std::lock_guard<std::mutex> lock(metadata_sync_mtx_);
+  s = meta_log_->AddRecord(record);
+  if(s.IsNoSpace()) s = RollMetaZoneLocked();
+  return s;
+}
+
+void ZonedEnv::EncodeSnapshotTo(std::string* output){
+  std::map<std::string, std::shared_ptr<ZoneFile>>::iterator it;
+  std::string files_string;
+  PutFixed32(output, kCompleteFilesSnapshot);
+  for (it = files_.begin(); it != files_.end(); it++) {
+    std::string file_string;
+    std::shared_ptr<ZoneFile> zFile = it->second;
+
+    zFile->EncodeSnapshotTo(&file_string);
+    PutLengthPrefixedSlice(&files_string, Slice(file_string));
+  }
+  PutLengthPrefixedSlice(output, Slice(files_string));
+}
+void ZonedEnv::EncodeFileDeletionTo(ZoneFile* zoneFile, std::string* output, std::string linkf){
+  std::string file_string;
+
+  PutFixed64(&file_string, zoneFile->GetID());
+  PutLengthPrefixedSlice(&file_string, Slice(linkf));
+
+  PutFixed32(output, kFileDeletion);
+  PutLengthPrefixedSlice(output, Slice(file_string));
+}
+
+Status ZonedEnv::DecodeSnapshotFrom(Slice* input){
+  Slice slice;
+
+  assert(files_.size() == 0);
+
+  while (GetLengthPrefixedSlice(input, &slice)) {
+    std::shared_ptr<ZoneFile> zoneFile(
+        new ZoneFile(zbd_, 0, &metadata_writer_));
+    Status s = zoneFile->DecodeFrom(&slice);
+    if (!s.ok()) return s;
+
+    if (zoneFile->GetID() >= next_file_id_)
+      next_file_id_ = zoneFile->GetID() + 1;
+
+    for (const auto& name : zoneFile->GetLinkFiles())
+      files_.insert(std::make_pair(name, zoneFile));
+  }
+
+  return Status::OK();
+}
+Status ZonedEnv::DecodeFileUpdateFrom(Slice* slice, bool replace = false){
+  std::shared_ptr<ZoneFile> update(new ZoneFile(zbd_, 0, &metadata_writer_));
+  uint64_t id;
+  Status s;
+
+  s = update->DecodeFrom(slice);
+  if (!s.ok()) return s;
+
+  id = update->GetID();
+  if (id >= next_file_id_) next_file_id_ = id + 1;
+
+  /* Check if this is an update or an replace to an existing file */
+  for (auto it = files_.begin(); it != files_.end(); it++) {
+    std::shared_ptr<ZoneFile> zFile = it->second;
+    if (id == zFile->GetID()) {
+      for (const auto& name : zFile->GetLinkFiles()) {
+        if (files_.find(name) != files_.end())
+          files_.erase(name);
+        else
+          return Status::Corruption("DecodeFileUpdateFrom: missing link file");
+      }
+
+      s = zFile->MergeUpdate(update, replace);
+      update.reset();
+
+      if (!s.ok()) return s;
+
+      for (const auto& name : zFile->GetLinkFiles())
+        files_.insert(std::make_pair(name, zFile));
+
+      return Status::OK();
+    }
+  }
+
+  /* The update is a new file */
+  assert(GetFile(update->GetFilename()) == nullptr);
+  files_.insert(std::make_pair(update->GetFilename(), update));
+
+  return Status::OK();
+}
+Status ZonedEnv::DecodeFileDeletionFrom(Slice* slice){
+  uint64_t fileID;
+  std::string fileName;
+  Slice slice;
+  IOStatus s;
+
+  if (!GetFixed64(input, &fileID))
+    return Status::Corruption("Zone file deletion: file id missing");
+
+  if (!GetLengthPrefixedSlice(input, &slice))
+    return Status::Corruption("Zone file deletion: file name missing");
+
+  fileName = slice.ToString();
+  if (files_.find(fileName) == files_.end())
+    return Status::Corruption("Zone file deletion: no such file");
+
+  std::shared_ptr<ZoneFile> zoneFile = files_[fileName];
+  if (zoneFile->GetID() != fileID)
+    return Status::Corruption("Zone file deletion: file ID missmatch");
+
+  files_.erase(fileName);
+  s = zoneFile->RemoveLinkName(fileName);
+  if (!s.ok())
+    return Status::Corruption("Zone file deletion: file links missmatch");
+
+  return Status::OK();
+}
+Status ZonedEnv::RecoverFrom(TaejukMetaLog* log){
+  bool at_least_one_snapshot = false;
+  std::string scratch;
+  uint32_t tag = 0;
+  Slice record;
+  Slice data;
+  Status s;
+  bool done = false;
+
+  while (!done) {
+    IOStatus rs = log->ReadRecord(&record, &scratch);
+    if (!rs.ok()) {
+      return Status::Corruption("ZenFS", "Metadata corruption");
+    }
+
+    if (!GetFixed32(&record, &tag)) break;
+
+    if (tag == kEndRecord) break;
+
+    if (!GetLengthPrefixedSlice(&record, &data)) {
+      return Status::Corruption("ZenFS", "No recovery record data");
+    }
+
+    switch (tag) {
+      case kCompleteFilesSnapshot:
+        ClearFiles();
+        s = DecodeSnapshotFrom(&data);
+        if (!s.ok()) {
+          return s;
+        }
+        at_least_one_snapshot = true;
+        break;
+
+      case kFileUpdate:
+        s = DecodeFileUpdateFrom(&data);
+        if (!s.ok()) {
+          return s;
+        }
+        break;
+
+      case kFileReplace:
+        s = DecodeFileUpdateFrom(&data, true);
+        if (!s.ok()) {
+          return s;
+        }
+        break;
+
+      case kFileDeletion:
+        s = DecodeFileDeletionFrom(&data);
+        if (!s.ok()) {
+          return s;
+        }
+        break;
+
+      default:
+        return Status::Corruption("ZenFS", "Unexpected tag");
+    }
+  }
+
+  if (at_least_one_snapshot)
+    return Status::OK();
+  else
+    return Status::NotFound("ZenFS", "No snapshot found");
+}
+
+std::string ZonedEnv::FormatPathLexically(fs::path filepath){
+  fs::path ret = fs::path("/") / filepath.lexically_normal();
+  return ret.string();
+}
+
+Status NewZonedEnv(Env** env, const std::string& bdevname) {
+  return Status::OK()
+}
 
 }
 
