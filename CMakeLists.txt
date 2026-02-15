@@ -195,7 +195,8 @@ target_sources(leveldb
     "util/status.cc"
     "util/zenfs/io_taejuk.cc"
     "util/zenfs/zbdlib_taejuk.cc"
-    "util/zenfs/zdb_taejuk.cc"
+    "util/zenfs/zbd_taejuk.cc"
+    "util/zenfs/zbdenv.cc"
 
   # Only CMake 3.3+ supports PUBLIC sources in targets exported by "install".
   $<$<VERSION_GREATER:CMAKE_VERSION,3.2>:PUBLIC>

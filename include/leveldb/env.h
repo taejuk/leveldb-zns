@@ -129,7 +129,7 @@ class LEVELDB_EXPORT Env {
   // the leveldb implementation) must be prepared to deal with
   // an Env that does not support appending.
   virtual Status NewAppendableFile(const std::string& fname,
-                                   WritableFile** result);
+                                   WritableFile** result,WriteLifeTimeHint hint = WLTH_NOT_SET);
 
   // Returns true iff the named file exists.
   virtual bool FileExists(const std::string& fname) = 0;
@@ -373,8 +373,8 @@ class LEVELDB_EXPORT EnvWrapper : public Env {
   Status NewWritableFile(const std::string& f, WritableFile** r, WriteLifeTimeHint hint = WLTH_NOT_SET) override {
     return target_->NewWritableFile(f, r, hint);
   }
-  Status NewAppendableFile(const std::string& f, WritableFile** r) override {
-    return target_->NewAppendableFile(f, r);
+  Status NewAppendableFile(const std::string& f, WritableFile** r,WriteLifeTimeHint hint = WLTH_NOT_SET) override {
+    return target_->NewAppendableFile(f, r, hint);
   }
   bool FileExists(const std::string& f) override {
     return target_->FileExists(f);
