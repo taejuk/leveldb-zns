@@ -20,7 +20,6 @@
 #include "util/mutexlock.h"
 #include "util/random.h"
 #include "util/testutil.h"
-
 // Comma-separated list of operations to run in the specified order
 //   Actual benchmarks:
 //      fillseq       -- write N values in sequential key order in async mode
@@ -1124,7 +1123,7 @@ int main(int argc, char** argv) {
   }
 
   leveldb::g_env = leveldb::Env::Default();
-
+  
   // Choose a location for the test database if none given with --db=<path>
   if (FLAGS_db == nullptr) {
     leveldb::g_env->GetTestDirectory(&default_db_path);

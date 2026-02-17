@@ -334,6 +334,57 @@ Status ZonedEnv::Mount(bool readonly) {
 
   return Status::OK();
 }
+
+void ZonedEnv::GCWorker() {
+  while (run_gc_worker_) {
+    usleep(1000 * 1000 * 10);
+
+    uint64_t non_free = zbd_->GetUsedSpace() + zbd_->GetReclaimableSpace();
+    uint64_t free = zbd_->GetFreeSpace();
+    uint64_t free_percent = (100 * free) / (free + non_free);
+    TaejukSnapshot snapshot;
+    TaejukSnapshotOptions options;
+
+    if (free_percent > GC_START_LEVEL) continue;
+
+    options.zone_ = 1;
+    options.zone_file_ = 1;
+    options.log_garbage_ = 1;
+
+    GetTaejukSnapshot(snapshot, options);
+
+    uint64_t threshold = (100 - GC_SLOPE * (GC_START_LEVEL - free_percent));
+    std::set<uint64_t> migrate_zones_start;
+    for (const auto& zone : snapshot.zones_) {
+      if (zone.capacity == 0) {
+        uint64_t garbage_percent_approx =
+            100 - 100 * zone.used_capacity / zone.max_capacity;
+        if (garbage_percent_approx > threshold &&
+            garbage_percent_approx < 100) {
+          migrate_zones_start.emplace(zone.start);
+        }
+      }
+    }
+
+    std::vector<ZoneExtentSnapshot*> migrate_exts;
+    for (auto& ext : snapshot.extents_) {
+      if (migrate_zones_start.find(ext.zone_start) !=
+          migrate_zones_start.end()) {
+        migrate_exts.push_back(&ext);
+      }
+    }
+
+    if (migrate_exts.size() > 0) {
+      Status s;
+      // Info(logger_, "Garbage collecting %d extents \n",
+      //      (int)migrate_exts.size());
+      s = MigrateExtents(migrate_exts);
+      if (!s.ok()) {
+        //Error(logger_, "Garbage collection failed");
+      }
+    }
+  }
+}
 Status ZonedEnv::MkFS(std::string aux_fs_p, uint32_t finish_threshold, bool enable_gc){
   std::vector<Zone*> metazones = zbd_->GetMetaZones();
   std::unique_ptr<TaejukMetaLog> log;
@@ -556,6 +607,14 @@ Status ZonedEnv::GetFileSize(const std::string& filename, uint64_t* file_size) {
 
   return s;
 }
+
+void ZonedEnv::ClearFiles() {
+  std::map<std::string, std::shared_ptr<ZoneFile>>::iterator it;
+  std::lock_guard<std::mutex> file_lock(files_mtx_);
+  for (it = files_.begin(); it != files_.end(); it++) it->second.reset();
+  files_.clear();
+}
+
 Status ZonedEnv::RenameFile(const std::string& src, const std::string& target){
   Status s;
   {
@@ -926,7 +985,6 @@ Status ZonedEnv::RollMetaZoneLocked(){
 
   s = WriteSnapshotLocked(meta_log_.get());
 
-  /* We've rolled successfully, we can reset the old zone now */
   if (s.ok()) old_meta_log->GetZone()->Reset();
 
   return s;
@@ -995,6 +1053,7 @@ Status ZonedEnv::DecodeSnapshotFrom(Slice* input){
 
   return Status::OK();
 }
+
 Status ZonedEnv::DecodeFileUpdateFrom(Slice* slice, bool replace){
   std::shared_ptr<ZoneFile> update(new ZoneFile(zbd_, 0, &metadata_writer_));
   uint64_t id;
@@ -1006,7 +1065,6 @@ Status ZonedEnv::DecodeFileUpdateFrom(Slice* slice, bool replace){
   id = update->GetID();
   if (id >= next_file_id_) next_file_id_ = id + 1;
 
-  /* Check if this is an update or an replace to an existing file */
   for (auto it = files_.begin(); it != files_.end(); it++) {
     std::shared_ptr<ZoneFile> zFile = it->second;
     if (id == zFile->GetID()) {
@@ -1133,14 +1191,15 @@ std::string ZonedEnv::FormatPathLexically(fs::path filepath){
 }
 
 Status NewZonedEnv(Env** env, const std::string& bdevname) {
+
   ZonedBlockDevice* zbd = new ZonedBlockDevice(bdevname);
+  
   Status s = zbd->Open(false, true);
   if (!s.ok()) {
     delete zbd;
     return s;
   }
 
-  // 2. Env 생성 및 마운트
   ZonedEnv* zenv = new ZonedEnv(zbd);
   s = zenv->Mount(false);
   if (!s.ok()) {

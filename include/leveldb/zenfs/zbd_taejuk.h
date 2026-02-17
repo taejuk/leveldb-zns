@@ -164,6 +164,12 @@ class ZonedBlockDevice {
  public:
   explicit ZonedBlockDevice(std::string path, ZbdBackendType backend,
                             std::shared_ptr<Logger> logger);
+  // ZonedBlockDevice(std::string path) 
+  //   : logger_(nullptr) 
+  // {
+  //   zbd_be_ = std::unique_ptr<ZbdlibBackend>(new ZbdlibBackend(path));
+  // }
+  explicit ZonedBlockDevice(std::string path);
   virtual ~ZonedBlockDevice();
 
   Status Open(bool readonly, bool exclusive);

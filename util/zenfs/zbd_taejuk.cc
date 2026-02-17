@@ -152,6 +152,12 @@ ZonedBlockDevice::ZonedBlockDevice(std::string path, ZbdBackendType backend, std
   zbd_be_ = std::unique_ptr<ZbdlibBackend>(new ZbdlibBackend(path));
 }
 
+ZonedBlockDevice::ZonedBlockDevice(std::string path) : logger_(nullptr) 
+{
+  zbd_be_ = std::unique_ptr<ZbdlibBackend>(new ZbdlibBackend(path));
+}
+
+
 Status ZonedBlockDevice::Open(bool readonly, bool exclusive) {
   std::unique_ptr<ZoneList> zone_rep;
   unsigned int max_nr_active_zones;
@@ -401,6 +407,14 @@ Status ZonedBlockDevice::ResetUnusedIOZones() {
     }
   }
   return Status::OK();
+}
+
+void ZonedBlockDevice::PutActiveIOZoneToken() {
+  {
+    std::unique_lock<std::mutex> lk(zone_resources_mtx_);
+    active_io_zones_--;
+  }
+  zone_resources_.notify_one();
 }
 
 void ZonedBlockDevice::WaitForOpenIOZoneToken(bool prioritized) {

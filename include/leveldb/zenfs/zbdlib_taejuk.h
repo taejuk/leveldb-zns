@@ -32,7 +32,6 @@ class ZbdlibBackend : public ZonedBlockDeviceBackend {
     int Read(char *buf, int size, uint64_t pos, bool direct);
     int Write(char *data, uint32_t size, uint64_t pos);
     int InvalidateCache(uint64_t pos, uint64_t size);
-    // 해당 zone의 idx가 SWR type인지 확인
     bool ZoneIsSwr(std::unique_ptr<ZoneList> &zones, unsigned int idx) {
       struct zbd_zone *z = &((struct zbd_zone *)zones->GetData())[idx];
       return zbd_zone_type(z) == ZBD_ZONE_TYPE_SWR;
