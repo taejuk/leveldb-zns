@@ -269,6 +269,8 @@ Status ZonedEnv::Mount(bool readonly) {
     if (super_record.size() == 0) continue;
 
     std::unique_ptr<Superblock> super_block;
+
+    super_block.reset(new Superblock());
     s = super_block->DecodeFrom(&super_record);
     if (s.ok()) s = super_block->CompatibleWith(zbd_);
     if (!s.ok()) return s;
@@ -1131,6 +1133,22 @@ std::string ZonedEnv::FormatPathLexically(fs::path filepath){
 }
 
 Status NewZonedEnv(Env** env, const std::string& bdevname) {
+  ZonedBlockDevice* zbd = new ZonedBlockDevice(bdevname);
+  Status s = zbd->Open(false, true);
+  if (!s.ok()) {
+    delete zbd;
+    return s;
+  }
+
+  // 2. Env 생성 및 마운트
+  ZonedEnv* zenv = new ZonedEnv(zbd);
+  s = zenv->Mount(false);
+  if (!s.ok()) {
+    delete zenv; 
+    return s;
+  }
+
+  *env = zenv;
   return Status::OK();
 }
 
