@@ -7,6 +7,8 @@
 #include <string.h>
 #include <unistd.h>
 
+#include <linux/fs.h> 
+#include <sys/ioctl.h>
 #include <fstream>
 #include <string>
 #include <iostream>
@@ -84,22 +86,9 @@ Status ZbdlibBackend::Open(bool readonly, bool exclusive,
     );
   }
 
-  // if(readonly) {
-  //   write_f_ = -1;
-  // } else {
-  //   write_f_ = zbd_open(filename_.c_str(), O_WRONLY | O_DIRECT, &info);
-  //   if(write_f_ < 0) {
-  //     return Status::InvalidArgument(
-  //       "Failed to open zoned block device for write: " +
-  //         ErrorToString(errno)
-  //     );
-  //   }
-  // }
-
   if(readonly) {
     write_f_ = -1;
   } else {
-    // 깔끔하게 O_WRONLY만 남김
     write_f_ = zbd_open(filename_.c_str(), O_WRONLY | O_DIRECT, &info);
     if(write_f_ < 0) {
       return Status::InvalidArgument(
@@ -108,6 +97,8 @@ Status ZbdlibBackend::Open(bool readonly, bool exclusive,
       );
     }
   }
+
+  
 
   if (info.model != ZBD_DM_HOST_MANAGED) {
     return Status::NotSupported("Not a host managed block device.");
@@ -184,7 +175,8 @@ Status ZbdlibBackend::Close(uint64_t start) {
 }
 // 당분간은 이 파일은 안 읽는다고 알려서 캐시에서 없앤다.
 int ZbdlibBackend::InvalidateCache(uint64_t pos, uint64_t size) {
-  return posix_fadvise(read_f_, pos, size, POSIX_FADV_DONTNEED);
+  //return posix_fadvise(read_f_, pos, size, POSIX_FADV_DONTNEED);
+  return ioctl(read_f_, BLKFLSBUF, 0);
 }
 
 int ZbdlibBackend::Read(char *buf, int size, uint64_t pos, bool direct) {

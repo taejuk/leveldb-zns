@@ -146,6 +146,7 @@ Status TaejukMetaLog::Read(Slice* slice) {
   size_t to_read = slice->size();
   int ret;
 
+  std::cout << read_pos_ << " " << zone_->wp_ << std::endl;
   if (read_pos_ >= zone_->wp_) {
     slice->clear();
     return Status::OK();
@@ -157,7 +158,7 @@ Status TaejukMetaLog::Read(Slice* slice) {
 
   while (read < to_read) {
     ret = zbd_->Read(data + read, read_pos_, to_read - read, false);
-
+    
     if (ret == -1 && errno == EINTR) continue;
     if (ret < 0) return Status::IOError("Read failed");
 
@@ -187,13 +188,14 @@ Status TaejukMetaLog::ReadRecord(Slice* record, std::string* scratch) {
     record->clear();
     return Status::OK();
   }
-
-  GetFixed32(&header, &record_crc);
-  GetFixed32(&header, &record_sz);
-
+  bool testret;
+  testret = GetFixed32(&header, &record_crc);
+  std::cout << "testret: " << testret << std::endl;
+  testret = GetFixed32(&header, &record_sz);
+  std::cout << "testret: " << testret << std::endl;
   scratch->clear();
   scratch->append(record_sz, 0);
-
+  std::cout << "record sz: " << record_sz << std::endl;
   *record = Slice(scratch->c_str(), record_sz);
   s = Read(record);
   if (!s.ok()) return s;
@@ -428,6 +430,8 @@ Status ZonedEnv::MkFS(std::string aux_fs_p, uint32_t finish_threshold, bool enab
 
   s = PersistSnapshot(log.get());
   if (!s.ok()) return Status::IOError("Failed persist snapshot");
+
+  zbd_->InvalidateCache(0, 0);
 
   return Status::OK();
 }
