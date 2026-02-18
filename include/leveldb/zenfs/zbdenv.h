@@ -9,6 +9,7 @@ namespace fs = std::filesystem;
 #include "leveldb/status.h"
 #include "snapshot.h"
 #include "leveldb/zenfs/zbd_taejuk.h"
+#include <atomic>
 // envwrapper를 상속받아서 구현하자.
 
 namespace leveldb {

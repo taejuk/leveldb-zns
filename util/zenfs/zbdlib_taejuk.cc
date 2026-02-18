@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <atomic>
 
 #include <linux/fs.h> 
 #include <sys/ioctl.h>
@@ -16,6 +17,8 @@
 #include "leveldb/status.h"
 
 namespace leveldb {
+
+extern std::atomic<uint64_t> g_zns_device_write_bytes;
 
 ZbdlibBackend::ZbdlibBackend(std::string bdevname)
     : filename_(bdevname),
@@ -176,7 +179,6 @@ Status ZbdlibBackend::Close(uint64_t start) {
 // 당분간은 이 파일은 안 읽는다고 알려서 캐시에서 없앤다.
 int ZbdlibBackend::InvalidateCache(uint64_t pos, uint64_t size) {
   return posix_fadvise(read_f_, pos, size, POSIX_FADV_DONTNEED);
-  //return ioctl(read_f_, BLKFLSBUF, 0);
 }
 
 int ZbdlibBackend::Read(char *buf, int size, uint64_t pos, bool direct) {
@@ -184,6 +186,7 @@ int ZbdlibBackend::Read(char *buf, int size, uint64_t pos, bool direct) {
 }
 
 int ZbdlibBackend::Write(char *data, uint32_t size, uint64_t pos) {
+  g_zns_device_write_bytes += size;
   return pwrite(write_f_, data, size, pos);
 }
 

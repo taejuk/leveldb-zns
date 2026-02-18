@@ -107,6 +107,7 @@ Status Zone::Close() {
 }
 
 Status Zone::Append(char *data, uint32_t size) {
+  
   char *ptr = data;
   uint32_t left = size;
   int ret;

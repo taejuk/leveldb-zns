@@ -20,6 +20,8 @@
 #define DEFAULT_TAEJUK_LOG_PATH "/tmp/"
 
 namespace leveldb {
+std::atomic<uint64_t> g_zns_user_write_bytes(0);
+std::atomic<uint64_t> g_zns_device_write_bytes(0);
 
 inline bool ends_with(std::string const& value, std::string const& ending) {
   if (ending.size() > value.size()) return false;
@@ -236,6 +238,21 @@ ZonedEnv::~ZonedEnv() {
     run_gc_worker_ = false;
     gc_worker_->join();
   }
+
+  double waf = 0.0;
+  if (g_zns_user_write_bytes > 0) {
+    waf = (double)g_zns_device_write_bytes / (double)g_zns_user_write_bytes;
+  }
+  std::cout << "\n========================================" << std::endl;
+  std::cout << "       ZNS Write Amplification (WAF)      " << std::endl;
+  std::cout << "========================================" << std::endl;
+  std::cout << " [1] User Writes (LevelDB): " << g_zns_user_write_bytes << " bytes (" 
+            << g_zns_user_write_bytes / 1024 / 1024 << " MB)" << std::endl;
+  std::cout << " [2] Device Writes (ZNS)  : " << g_zns_device_write_bytes << " bytes (" 
+            << g_zns_device_write_bytes / 1024 / 1024 << " MB)" << std::endl;
+  std::cout << " ----------------------------------------" << std::endl;
+  std::cout << " -> WAF (Device / User)   : " << waf << std::endl;
+  std::cout << "========================================\n" << std::endl;
   meta_log_.reset(nullptr);
   ClearFiles();
   delete zbd_;

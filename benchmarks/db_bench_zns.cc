@@ -820,7 +820,6 @@ class Benchmark {
     options.compression =
         FLAGS_compression ? kSnappyCompression : kNoCompression;
     Status s = DB::Open(options, FLAGS_db, &db_);
-    std::cout << "db open: " << s.ToString() << std::endl;
     if (!s.ok()) {
       std::fprintf(stderr, "open error: %s\n", s.ToString().c_str());
       std::exit(1);

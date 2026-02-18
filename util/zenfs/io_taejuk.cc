@@ -10,6 +10,7 @@
 #include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <atomic>
 
 #include <iostream>
 #include <string>
@@ -20,6 +21,8 @@
 #include "util/coding.h"
 
 namespace leveldb {
+
+extern std::atomic<uint64_t> g_zns_user_write_bytes;
 
 ZoneExtent::ZoneExtent(uint64_t start, uint64_t length, Zone* zone)
     : start_(start), length_(length), zone_(zone) {}
@@ -669,6 +672,8 @@ MetadataWriter::~MetadataWriter() {}
 
 Status ZonedWritableFile::Append(const Slice& data){
   Status s;
+  
+  g_zns_user_write_bytes += data.size();
 
   if (buffered) {
     buffer_mtx_.lock();

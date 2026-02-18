@@ -1511,7 +1511,6 @@ Status DB::Open(const Options& options, const std::string& dbname, DB** dbptr) {
   bool save_manifest = false;
   //std::cout << "recover start!" << std::endl;
   Status s = impl->Recover(&edit, &save_manifest);
-  std::cout << "recover result: " << s.ToString() << std::endl;
   if (s.ok() && impl->mem_ == nullptr) {
     // Create new log and a corresponding memtable.
     uint64_t new_log_number = impl->versions_->NewFileNumber();
