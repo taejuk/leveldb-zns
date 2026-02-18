@@ -11,7 +11,7 @@
 #include <set>
 #include <string>
 #include <vector>
-
+#include <iostream>
 #include "db/builder.h"
 #include "db/db_iter.h"
 #include "db/dbformat.h"
@@ -188,6 +188,7 @@ Status DBImpl::NewDB() {
   const std::string manifest = DescriptorFileName(dbname_, 1);
   WritableFile* file;
   Status s = env_->NewWritableFile(manifest, &file);
+  std::cout << "NewDB newwritableFile: " << s.ToString() << std::endl;
   if (!s.ok()) {
     return s;
   }
@@ -290,6 +291,7 @@ void DBImpl::RemoveObsoleteFiles() {
 }
 
 Status DBImpl::Recover(VersionEdit* edit, bool* save_manifest) {
+  std::cout << "DBImpl::Recover" << std::endl;
   mutex_.AssertHeld();
 
   // Ignore error from CreateDir since the creation of the DB is
@@ -1501,19 +1503,22 @@ DB::~DB() = default;
 
 Status DB::Open(const Options& options, const std::string& dbname, DB** dbptr) {
   *dbptr = nullptr;
-
+  
   DBImpl* impl = new DBImpl(options, dbname);
   impl->mutex_.Lock();
   VersionEdit edit;
   // Recover handles create_if_missing, error_if_exists
   bool save_manifest = false;
+  std::cout << "recover start!" << std::endl;
   Status s = impl->Recover(&edit, &save_manifest);
+  
   if (s.ok() && impl->mem_ == nullptr) {
     // Create new log and a corresponding memtable.
     uint64_t new_log_number = impl->versions_->NewFileNumber();
     WritableFile* lfile;
     s = options.env->NewWritableFile(LogFileName(dbname, new_log_number),
                                      &lfile);
+    
     if (s.ok()) {
       edit.SetLogNumber(new_log_number);
       impl->logfile_ = lfile;

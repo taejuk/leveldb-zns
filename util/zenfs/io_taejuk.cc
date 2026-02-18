@@ -124,20 +124,101 @@ void ZoneFile::EncodeJson(std::ostream& json_stream) {
 
 
 Status ZoneFile::DecodeFrom(Slice* input) {
-  // uint32_t tag = 0;
-  // GetFiexed32(input, &tag);
+  uint32_t tag = 0;
 
-  // if (tag != kFileID || !GetFiexed64(input, &file_id_))
-  //   return Status::Corruption("ZoneFile", "File ID missing");
+  GetFixed32(input, &tag);
+  if (tag != kFileID || !GetFixed64(input, &file_id_))
+    return Status::Corruption("ZoneFile", "File ID missing");
 
+  while (true) {
+    Slice slice;
+    ZoneExtent* extent;
+    Status s;
+
+    if (!GetFixed32(input, &tag)) break;
+
+    switch (tag) {
+      case kFileSize:
+        if (!GetFixed64(input, &file_size_))
+          return Status::Corruption("ZoneFile", "Missing file size");
+        break;
+      case kWriteLifeTimeHint:
+        uint32_t lt;
+        if (!GetFixed32(input, &lt))
+          return Status::Corruption("ZoneFile", "Missing life time hint");
+        lifetime_ = (WriteLifeTimeHint)lt;
+        break;
+      case kExtent:
+        extent = new ZoneExtent(0, 0, nullptr);
+        GetLengthPrefixedSlice(input, &slice);
+        s = extent->DecodeFrom(&slice);
+        if (!s.ok()) {
+          delete extent;
+          return s;
+        }
+        extent->zone_ = zbd_->GetIOZone(extent->start_);
+        if (!extent->zone_)
+          return Status::Corruption("ZoneFile", "Invalid zone extent");
+        extent->zone_->used_capacity_ += extent->length_;
+        extents_.push_back(extent);
+        break;
+      case kModificationTime:
+        uint64_t ct;
+        if (!GetFixed64(input, &ct))
+          return Status::Corruption("ZoneFile", "Missing creation time");
+        m_time_ = (time_t)ct;
+        break;
+      case kActiveExtentStart:
+        uint64_t es;
+        if (!GetFixed64(input, &es))
+          return Status::Corruption("ZoneFile", "Active extent start");
+        extent_start_ = es;
+        break;
+      case kLinkedFilename:
+        if (!GetLengthPrefixedSlice(input, &slice))
+          return Status::Corruption("ZoneFile", "LinkFilename missing");
+
+        if (slice.ToString().length() == 0)
+          return Status::Corruption("ZoneFile", "Zero length Linkfilename");
+
+        linkfiles_.push_back(slice.ToString());
+        break;
+      default:
+        return Status::Corruption("ZoneFile", "Unexpected tag");
+    }
+  }
+
+  MetadataSynced();
 
   return Status::OK();
 }
 
 Status ZoneFile::MergeUpdate(std::shared_ptr<ZoneFile> update, bool replace) {
-  // if (file_id_ != update->GetID()) return Status::Corruption("ZoneFile update", "ID missmatch");
+  if (file_id_ != update->GetID())
+    return Status::Corruption("ZoneFile update", "ID missmatch");
 
-  // SetFileSize(update->GetFileSize());
+  SetFileSize(update->GetFileSize());
+  SetWriteLifeTimeHint(update->GetWriteLifeTimeHint());
+  SetFileModificationTime(update->GetFileModificationTime());
+
+  if (replace) {
+    ClearExtents();
+  }
+
+  std::vector<ZoneExtent*> update_extents = update->GetExtents();
+  for (long unsigned int i = 0; i < update_extents.size(); i++) {
+    ZoneExtent* extent = update_extents[i];
+    Zone* zone = extent->zone_;
+    zone->used_capacity_ += extent->length_;
+    extents_.push_back(new ZoneExtent(extent->start_, extent->length_, zone));
+  }
+  extent_start_ = update->GetExtentStart();
+  //is_sparse_ = update->IsSparse();
+  MetadataSynced();
+
+  linkfiles_.clear();
+  for (const auto& name : update->GetLinkFiles()) linkfiles_.push_back(name);
+
   return Status::OK();
 }
 
@@ -152,6 +233,7 @@ ZoneFile::ZoneFile(ZonedBlockDevice* zbd, uint64_t file_id, MetadataWriter* meta
       file_id_(file_id),
       nr_synced_extents_(0),
       m_time_(0),
+      open_for_wr_(false),
       metadata_writer_(metadata_writer) {}
 
 std::string ZoneFile::GetFilename() { return linkfiles_[0]; }
@@ -180,6 +262,7 @@ Status ZoneFile::CloseActiveZone() {
   if(active_zone_) {
     bool full = active_zone_->IsFull();
     s = active_zone_->Close();
+    
     if(!s.ok()) return s;
     // token들은 active와 open수를 관리하기 위한 것이다.
     zbd_->PutOpenIOZoneToken();

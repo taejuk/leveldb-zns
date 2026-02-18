@@ -28,7 +28,7 @@ class Superblock {
   uint32_t nr_zones_ = 0;
   char aux_fs_path_[256] = {0};
   uint32_t finish_treshold_ = 0;
-  char reserved_[123] = {0};
+  char reserved_[191] = {0};
 
  public:
   const uint32_t MAGIC = 0x7461656a; // taej

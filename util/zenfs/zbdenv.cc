@@ -8,7 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-
+#include <iostream>
 #include <set>
 #include <sstream>
 #include <utility>
@@ -65,6 +65,7 @@ void Superblock::EncodeTo(std::string* output) {
   PutFixed32(output, finish_treshold_);
   output->append(aux_fs_path_, sizeof(aux_fs_path_));
   output->append(reserved_, sizeof(reserved_));
+  std::cout << output->length() << " " << ENCODED_SIZE << std::endl;
   assert(output->length() == ENCODED_SIZE);
 }
 
@@ -179,7 +180,6 @@ Status TaejukMetaLog::ReadRecord(Slice* record, std::string* scratch) {
 
   scratch->append(zMetaHeaderSize, 0);
   header = Slice(scratch->c_str(), zMetaHeaderSize);
-
   s = Read(&header);
   if (!s.ok()) return s;
 
@@ -265,7 +265,7 @@ Status ZonedEnv::Mount(bool readonly) {
     log.reset(new TaejukMetaLog(zbd_, z));
 
     if (!log->ReadRecord(&super_record, &scratch).ok()) continue;
-
+    
     if (super_record.size() == 0) continue;
 
     std::unique_ptr<Superblock> super_block;
@@ -1196,6 +1196,7 @@ Status NewZonedEnv(Env** env, const std::string& bdevname) {
   
   Status s = zbd->Open(false, true);
   if (!s.ok()) {
+    std::cout << s.ToString() << std::endl;
     delete zbd;
     return s;
   }

@@ -17,12 +17,8 @@ class ZbdlibBackend : public ZonedBlockDeviceBackend {
 
   public:
     explicit ZbdlibBackend(std::string bdevname);
-    ~ZbdlibBackend() {
-      zbd_close(read_f_);
-      zbd_close(read_direct_f_);
-      zbd_close(write_f_);
-    }
-
+   
+    virtual ~ZbdlibBackend();
     Status Open(bool readonly, bool exclusive, unsigned int *max_active_zones,
                   unsigned int *max_open_zones);
     std::unique_ptr<ZoneList> ListZones();

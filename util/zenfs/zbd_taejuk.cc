@@ -172,7 +172,7 @@ Status ZonedBlockDevice::Open(bool readonly, bool exclusive) {
 
   Status ios = zbd_be_->Open(readonly, exclusive, &max_nr_active_zones, &max_nr_open_zones);
   if (ios != Status::OK()) return ios;
-
+  
   if (zbd_be_->GetNrZones() < TAEJUK_MIN_ZONES) return Status::NotSupported("To few zones on zoned backend (" +std::to_string(TAEJUK_MIN_ZONES) +" required)");
 
   if (max_nr_active_zones == 0) max_nr_active_io_zones_ = zbd_be_->GetNrZones();

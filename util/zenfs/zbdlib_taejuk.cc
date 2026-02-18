@@ -9,17 +9,24 @@
 
 #include <fstream>
 #include <string>
-
+#include <iostream>
 #include "leveldb/env.h"
 #include "leveldb/status.h"
 
 namespace leveldb {
 
 ZbdlibBackend::ZbdlibBackend(std::string bdevname)
-    : filename_("/dev/" + bdevname),
+    : filename_(bdevname),
       read_f_(-1),
       read_direct_f_(-1),
       write_f_(-1) {}
+
+ZbdlibBackend::~ZbdlibBackend() {
+  if (read_f_ >= 0) zbd_close(read_f_);
+  if (read_direct_f_ >= 0) zbd_close(read_direct_f_);
+  if (write_f_ >= 0) zbd_close(write_f_);
+    
+}
 
 std::string ZbdlibBackend::ErrorToString(int err) {
   char *err_str = strerror(err);
@@ -55,7 +62,7 @@ Status ZbdlibBackend::Open(bool readonly, bool exclusive,
                            unsigned int *max_active_zones,
                            unsigned int *max_open_zones) {
   zbd_info info;
-
+  std::cout << "hello " << filename_ << std::endl;
   if (exclusive) {
     read_f_ = zbd_open(filename_.c_str(), O_RDONLY | O_EXCL, &info);
   } else {
@@ -68,7 +75,8 @@ Status ZbdlibBackend::Open(bool readonly, bool exclusive,
     );
   }
 
-  read_direct_f_ = zbd_open(filename_.c_str(), O_RDONLY | O_DIRECT, &info);
+  //read_direct_f_ = zbd_open(filename_.c_str(), O_RDONLY | O_DIRECT, &info);
+  read_direct_f_ = zbd_open(filename_.c_str(), O_RDONLY, &info);
   if (read_direct_f_ < 0) {
     return Status::InvalidArgument(
       "Failed to open zoned block device for direct read: " +
@@ -76,9 +84,22 @@ Status ZbdlibBackend::Open(bool readonly, bool exclusive,
     );
   }
 
+  // if(readonly) {
+  //   write_f_ = -1;
+  // } else {
+  //   write_f_ = zbd_open(filename_.c_str(), O_WRONLY | O_DIRECT, &info);
+  //   if(write_f_ < 0) {
+  //     return Status::InvalidArgument(
+  //       "Failed to open zoned block device for write: " +
+  //         ErrorToString(errno)
+  //     );
+  //   }
+  // }
+
   if(readonly) {
     write_f_ = -1;
   } else {
+    // 깔끔하게 O_WRONLY만 남김
     write_f_ = zbd_open(filename_.c_str(), O_WRONLY | O_DIRECT, &info);
     if(write_f_ < 0) {
       return Status::InvalidArgument(
@@ -156,6 +177,7 @@ Status ZbdlibBackend::Close(uint64_t start) {
   int ret;
   
   ret = zbd_close_zones(write_f_, start, zone_sz_);
+  std::cout << "Close ret: " << strerror(errno) << std::endl;
   if (ret) return Status::IOError("Zone close failed\n");
 
   return Status::OK();
