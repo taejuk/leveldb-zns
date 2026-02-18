@@ -64,7 +64,7 @@ Status ZbdlibBackend::Open(bool readonly, bool exclusive,
                            unsigned int *max_active_zones,
                            unsigned int *max_open_zones) {
   zbd_info info;
-  std::cout << "hello " << filename_ << std::endl;
+  //std::cout << "hello " << filename_ << std::endl;
   if (exclusive) {
     read_f_ = zbd_open(filename_.c_str(), O_RDONLY | O_EXCL, &info);
   } else {
@@ -168,15 +168,15 @@ Status ZbdlibBackend::Close(uint64_t start) {
   int ret;
   
   ret = zbd_close_zones(write_f_, start, zone_sz_);
-  std::cout << "Close ret: " << strerror(errno) << std::endl;
-  if (ret) return Status::IOError("Zone close failed\n");
-
+  //std::cout << "Close ret: " << strerror(errno) << std::endl;
+  //if (ret) return Status::IOError("Zone close failed\n");
+  
   return Status::OK();
 }
 // 당분간은 이 파일은 안 읽는다고 알려서 캐시에서 없앤다.
 int ZbdlibBackend::InvalidateCache(uint64_t pos, uint64_t size) {
-  //return posix_fadvise(read_f_, pos, size, POSIX_FADV_DONTNEED);
-  return ioctl(read_f_, BLKFLSBUF, 0);
+  return posix_fadvise(read_f_, pos, size, POSIX_FADV_DONTNEED);
+  //return ioctl(read_f_, BLKFLSBUF, 0);
 }
 
 int ZbdlibBackend::Read(char *buf, int size, uint64_t pos, bool direct) {

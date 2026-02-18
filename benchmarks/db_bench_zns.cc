@@ -669,7 +669,7 @@ class Benchmark {
       }
 
       if (method != nullptr) {
-      (num_threads, name, method);
+        RunBenchmark(num_threads, name, method);
       }
     }
   }
@@ -820,6 +820,7 @@ class Benchmark {
     options.compression =
         FLAGS_compression ? kSnappyCompression : kNoCompression;
     Status s = DB::Open(options, FLAGS_db, &db_);
+    std::cout << "db open: " << s.ToString() << std::endl;
     if (!s.ok()) {
       std::fprintf(stderr, "open error: %s\n", s.ToString().c_str());
       std::exit(1);
@@ -1126,17 +1127,40 @@ int main(int argc, char** argv) {
     }
   }
 
-  leveldb::g_env = leveldb::Env::Default();
-  
-  // Choose a location for the test database if none given with --db=<path>
-  if (FLAGS_db == nullptr) {
-    // leveldb::g_env->GetTestDirectory(&default_db_path);
-    // default_db_path += "/dbbench";
-    // FLAGS_db = default_db_path.c_str();
-    FLAGS_db = "/mnt/ramdisk/dbbench_vanilla";
-  }
+  const std::string DEVICE_NAME = "/dev/nullb0";
+  const std::string AUX_PATH = "/tmp/zenfs_aux";
 
+  fprintf(stderr, "Initializing ZNS Environment on %s...\n", DEVICE_NAME.c_str());
+
+  // 1. MkFS (Format)
+  leveldb::ZonedBlockDevice* zbd = new leveldb::ZonedBlockDevice(DEVICE_NAME);
+  leveldb::Status s = zbd->Open(false, true);
+  if(!s.ok()) { fprintf(stderr, "ZBD Open Error: %s\n", s.ToString().c_str()); exit(1); }
+
+  leveldb::ZonedEnv* zenv = new leveldb::ZonedEnv(zbd);
+  s = zenv->MkFS(AUX_PATH, 0, false);
+  if(!s.ok()) { fprintf(stderr, "MkFS Error: %s\n", s.ToString().c_str()); exit(1); }
+  
+  // 캐시 플러시를 위해 닫기
+  delete zenv; 
+
+  // 2. Re-Open & Mount
+  zbd = new leveldb::ZonedBlockDevice(DEVICE_NAME);
+  s = zbd->Open(false, true);
+  if(!s.ok()) { fprintf(stderr, "ZBD Re-Open Error: %s\n", s.ToString().c_str()); exit(1); }
+
+  zenv = new leveldb::ZonedEnv(zbd);
+  s = zenv->Mount(false);
+  if(!s.ok()) { fprintf(stderr, "Mount Error: %s\n", s.ToString().c_str()); exit(1); }
+
+  leveldb::g_env = zenv;
+  
+  if (FLAGS_db == nullptr) {
+      FLAGS_db = "dbbench_zns"; 
+  }
+  
   leveldb::Benchmark benchmark;
   benchmark.Run();
+  //delete zenv;
   return 0;
 }
