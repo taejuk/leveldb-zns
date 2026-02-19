@@ -464,7 +464,6 @@ Status ZoneFile::BufferedAppend(char* buffer, uint32_t data_size) {
   uint32_t left = data_size;
   uint32_t wr_size;
   uint32_t block_sz = GetBlockSize();
-
   Status s;
   if (active_zone_ == NULL) {
     s = AllocateNewZone();
@@ -481,6 +480,7 @@ Status ZoneFile::BufferedAppend(char* buffer, uint32_t data_size) {
 
     if(pad_sz) memset(buffer + wr_size, 0x0, pad_sz);
     uint64_t extent_length = wr_size;
+    // std::cout << "padding size: " << pad_sz << std::endl;
 
     s = active_zone_->Append(buffer, wr_size + pad_sz);
     if (!s.ok()) return s;
@@ -525,6 +525,7 @@ Status ZoneFile::Append(void* data, int data_size) {
     // 다 썼으니깐
     // 이때까지 쓴 데이터 저장하고
     // 새로운 존을 만든다.
+    std::cout << "capacity: " << active_zone_->capacity_ << std::endl;
     if (active_zone_->capacity_ == 0) {
       PushExtent();
 
@@ -644,6 +645,7 @@ ZonedWritableFile::ZonedWritableFile(ZonedBlockDevice* zbd, bool _buffered,
   wp = zoneFile->GetFileSize();
 
   buffered = _buffered;
+  
   block_sz = zbd->GetBlockSize();
   zoneFile_ = zoneFile;
   buffer_pos = 0;
@@ -674,7 +676,7 @@ Status ZonedWritableFile::Append(const Slice& data){
   Status s;
   
   g_zns_user_write_bytes += data.size();
-
+  
   if (buffered) {
     buffer_mtx_.lock();
     s = BufferedWrite(data);
@@ -708,7 +710,7 @@ Status ZonedWritableFile::BufferedWrite(const Slice& slice) {
   while (data_left) {
     uint32_t buffer_left = buffer_sz - buffer_pos;
     uint32_t to_buffer;
-
+    
     if(!buffer_left) {
       s = FlushBuffer();
       if (!s.ok()) return s;

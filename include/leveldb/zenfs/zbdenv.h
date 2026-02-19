@@ -144,7 +144,9 @@ class LEVELDB_EXPORT ZonedEnv : public EnvWrapper {
   void GetTaejukSnapshot(TaejukSnapshot& snapshot, const TaejukSnapshotOptions& options);
   Status MigrateExtents(const std::vector<ZoneExtentSnapshot*>& extents);
   Status MigrateFileExtents(const std::string& fname, const std::vector<ZoneExtentSnapshot*>& migrate_exts);
-
+  double FreePercent();
+  void ExecuteGC();
+  double GetWAF();
  private:
   enum ZenFSTag : uint32_t {
     kCompleteFilesSnapshot = 1,

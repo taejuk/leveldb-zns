@@ -253,9 +253,18 @@ ZonedEnv::~ZonedEnv() {
   std::cout << " ----------------------------------------" << std::endl;
   std::cout << " -> WAF (Device / User)   : " << waf << std::endl;
   std::cout << "========================================\n" << std::endl;
+  std::cout << "Free space: " << FreePercent() << "%" << std::endl;
   meta_log_.reset(nullptr);
   ClearFiles();
   delete zbd_;
+}
+
+double ZonedEnv::GetWAF() {
+  double waf = 0.0;
+  if (g_zns_user_write_bytes > 0) {
+    waf = (double)g_zns_device_write_bytes / (double)g_zns_user_write_bytes;
+  }
+  return waf;
 }
 
 Status ZonedEnv::Mount(bool readonly) {
@@ -354,8 +363,65 @@ Status ZonedEnv::Mount(bool readonly) {
   return Status::OK();
 }
 
+double ZonedEnv::FreePercent() {
+  uint64_t non_free = zbd_->GetUsedSpace() + zbd_->GetReclaimableSpace();
+  uint64_t free = zbd_->GetFreeSpace();
+  return (double)(100 * free) / (double)(free + non_free);
+}
+
+void ZonedEnv::ExecuteGC() {
+  
+
+  uint64_t non_free = zbd_->GetUsedSpace() + zbd_->GetReclaimableSpace();
+  uint64_t free = zbd_->GetFreeSpace();
+  uint64_t free_percent = (100 * free) / (free + non_free);
+  TaejukSnapshot snapshot;
+  TaejukSnapshotOptions options;
+
+  //if (free_percent > GC_START_LEVEL) continue;
+  std::cout << "garbage collection start!: " << free_percent << std::endl;
+  options.zone_ = 1;
+  options.zone_file_ = 1;
+  options.log_garbage_ = 1;
+
+  GetTaejukSnapshot(snapshot, options);
+
+  uint64_t threshold = (100 - GC_SLOPE * (GC_START_LEVEL - free_percent));
+  std::set<uint64_t> migrate_zones_start;
+  for (const auto& zone : snapshot.zones_) {
+    // if (zone.capacity == 0) {
+    //   uint64_t garbage_percent_approx =
+    //       100 - 100 * zone.used_capacity / zone.max_capacity;
+    //   if (garbage_percent_approx > threshold &&
+    //       garbage_percent_approx < 100) {
+    //     migrate_zones_start.emplace(zone.start);
+    //   }
+    // }
+    migrate_zones_start.emplace(zone.start);
+  }
+
+  std::vector<ZoneExtentSnapshot*> migrate_exts;
+  for (auto& ext : snapshot.extents_) {
+    if (migrate_zones_start.find(ext.zone_start) !=
+        migrate_zones_start.end()) {
+      migrate_exts.push_back(&ext);
+    }
+  }
+  std::cout << "Garbage collecting " << (int)migrate_exts.size() << "extents" <<std::endl;
+  if (migrate_exts.size() > 0) {
+    Status s;
+    
+    s = MigrateExtents(migrate_exts);
+    if (!s.ok()) {
+      //Error(logger_, "Garbage collection failed");
+    }
+  }
+
+}
+
 void ZonedEnv::GCWorker() {
   while (run_gc_worker_) {
+    
     usleep(1000 * 1000 * 10);
 
     uint64_t non_free = zbd_->GetUsedSpace() + zbd_->GetReclaimableSpace();
@@ -365,7 +431,7 @@ void ZonedEnv::GCWorker() {
     TaejukSnapshotOptions options;
 
     if (free_percent > GC_START_LEVEL) continue;
-
+    std::cout << "garbage collection start!" << std::endl;
     options.zone_ = 1;
     options.zone_file_ = 1;
     options.log_garbage_ = 1;
@@ -481,6 +547,7 @@ Status ZonedEnv::NewRandomAccessFile(const std::string& filename, RandomAccessFi
 }
 Status ZonedEnv::NewWritableFile(const std::string& filename, WritableFile** result,WriteLifeTimeHint hint){
   std::string fname = FormatPathLexically(filename);
+  std::cout << "fname: " << fname << std::endl;
   return OpenWritableFile(fname, result, hint, false);
 }
 Status ZonedEnv::NewAppendableFile(const std::string& filename, WritableFile** result,WriteLifeTimeHint hint){
@@ -831,7 +898,9 @@ Status ZonedEnv::DeleteFileNoLock(std::string& fname){
   Status s;
 
   fname = FormatPathLexically(fname);
+  
   zoneFile = GetFileNoLock(fname);
+  std::cout << "delete fname: " << fname <<" : " << zoneFile <<std::endl;
   if (zoneFile != nullptr) {
     std::string record;
 
@@ -845,6 +914,7 @@ Status ZonedEnv::DeleteFileNoLock(std::string& fname){
       zoneFile->AddLinkName(fname);
     } else {
       if (zoneFile->GetNrLinks() > 0) return s;
+       
       zoneFile->SetDeleted();
       zoneFile.reset();
     }

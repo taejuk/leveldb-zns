@@ -1160,6 +1160,11 @@ int main(int argc, char** argv) {
   
   leveldb::Benchmark benchmark;
   benchmark.Run();
-  //delete zenv;
+  
+  //zenv->ExecuteGC();
+  fprintf(stderr, "WAF: %f\n", zenv->GetWAF());
   return 0;
 }
+
+// waf 구하는 것을 함수로 하고
+// 현재 사용중인 공간을 구하는 함수도 구하자/

@@ -365,8 +365,8 @@ unsigned int GetLifeTimeDiff(WriteLifeTimeHint zone_lifetime, WriteLifeTimeHint 
   }
 
   if (zone_lifetime > file_lifetime) return zone_lifetime - file_lifetime;
-  if (zone_lifetime == file_lifetime) return LIFETIME_DIFF_COULD_BE_WORSE;
-
+  //if (zone_lifetime == file_lifetime) return LIFETIME_DIFF_COULD_BE_WORSE;
+  if (zone_lifetime == file_lifetime) return 0;
   return LIFETIME_DIFF_NOT_GOOD;
 }
 
@@ -733,7 +733,6 @@ Status ZonedBlockDevice::AllocateIOZone(WriteLifeTimeHint file_lifetime, IOType 
   if (io_type != IOType::kWAL) {
     LogZoneStats();
   }
-
   *out_zone = allocated_zone;
 
   return Status::OK();

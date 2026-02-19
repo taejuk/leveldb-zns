@@ -71,15 +71,17 @@ int main() {
     
     // 5. Put/Get 테스트
     std::cout << "[Step 5] I/O Test..." << std::endl;
-    s = db->Put(leveldb::WriteOptions(), "key1", "value1");
+    for(int i = 0; i < 100000000; i++)
+    //s = db->Put(leveldb::WriteOptions(), std::to_string(i), "value1");
+    s = db->Put(leveldb::WriteOptions(), "1", "value1");
     if (!s.ok()) std::cerr << "Put Error: " << s.ToString() << std::endl;
 
     std::string val;
-    s = db->Get(leveldb::ReadOptions(), "key1", &val);
+    s = db->Get(leveldb::ReadOptions(), "1", &val);
     if (!s.ok()) std::cerr << "Get Error: " << s.ToString() << std::endl;
     
     std::cout << "-> Read Value: " << val << std::endl;
-
+    std::cout << "free space: " << zenv->FreePercent() << std::endl;
     delete db;
     // zenv, zbd는 OS가 정리하도록 둠 (테스트 코드이므로)
     
