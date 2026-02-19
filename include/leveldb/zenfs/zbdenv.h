@@ -149,6 +149,8 @@ class LEVELDB_EXPORT ZonedEnv : public EnvWrapper {
   double FreePercent();
   void ExecuteGC();
   double GetWAF();
+  Status RemoveFile(const std::string& fname) override;
+  Status RemoveDir(const std::string& d) override;
  private:
   enum ZenFSTag : uint32_t {
     kCompleteFilesSnapshot = 1,

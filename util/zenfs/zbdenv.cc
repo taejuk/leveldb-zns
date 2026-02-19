@@ -614,23 +614,39 @@ bool ZonedEnv::FileExists(const std::string& filename) {
 }
 
 Status ZonedEnv::GetChildrenNoLock(const std::string& dir_path, std::vector<std::string>* result) {
+  // std::vector<std::string> auxfiles;
+  // std::string dir = FormatPathLexically(dir_path);
+  // Status s;
+
+  // s = target()->GetChildren(ToAuxPath(dir), &auxfiles);
+  // if (!s.ok()) {
+  //   if(!s.IsNotFound()) return s;
+    
+  // }
+
+  // for(const auto& f : auxfiles) {
+  //   if (f != "." && f != "..") result->push_back(f);
+  // }
+
+  // GetTaejukChildrenNoLock(dir, false, result);
+
+  // return s;
   std::vector<std::string> auxfiles;
   std::string dir = FormatPathLexically(dir_path);
   Status s;
 
   s = target()->GetChildren(ToAuxPath(dir), &auxfiles);
   if (!s.ok()) {
-    if(s.IsNotFound()) return Status::OK();
-    return s;
-  }
-
-  for(const auto& f : auxfiles) {
-    if (f != "." && f != "..") result->push_back(f);
+    if(!s.IsNotFound()) return s; 
+  } else {
+    for(const auto& f : auxfiles) {
+      if (f != "." && f != "..") result->push_back(f);
+    }
   }
 
   GetTaejukChildrenNoLock(dir, false, result);
 
-  return s;
+  return Status::OK();
 }
 
 void ZonedEnv::GetTaejukChildrenNoLock(const std::string& dir, bool include_grandchildren, std::vector<std::string>* result){
@@ -674,11 +690,21 @@ Status ZonedEnv::GetChildren(const std::string& dir, std::vector<std::string>* r
 }
 
 
+Status ZonedEnv::RemoveFile(const std::string& fname) {
+  fprintf(stderr, "RemoveFile\n");
+  return DeleteFile(fname);
+}
+
+Status ZonedEnv::RemoveDir(const std::string& d) {
+  return DeleteDir(d);
+}
+
 
 Status ZonedEnv::DeleteFile(const std::string& fname) {
   Status s;
   files_mtx_.lock();
   std::string filename = fname;
+  fprintf(stderr, "delete file: %s\n", fname);
   s = DeleteFileNoLock(filename);
   files_mtx_.unlock();
   if (s.ok()) s = zbd_->ResetUnusedIOZones();

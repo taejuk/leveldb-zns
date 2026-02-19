@@ -394,11 +394,13 @@ Status ZonedBlockDevice::AllocateMetaZone(Zone **out_meta_zone) {
 }
 
 Status ZonedBlockDevice::ResetUnusedIOZones() {
+  int i = 0;
   for (const auto z : io_zones) {
     if (z->Acquire()) {
       // 비어있지도 않고 사용하지도 않는 zone을 reset한다.
       if (!z->IsEmpty() && !z->IsUsed()) {
         bool full = z->IsFull();
+        i++;
         Status reset_status = z->Reset();
         Status release_status = z->CheckRelease();
         if(!reset_status.ok()) return reset_status;
@@ -410,6 +412,7 @@ Status ZonedBlockDevice::ResetUnusedIOZones() {
       }
     }
   }
+  fprintf(stderr, "total reset: %d\n", i);
   return Status::OK();
 }
 

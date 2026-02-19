@@ -285,6 +285,7 @@ void DBImpl::RemoveObsoleteFiles() {
   // are therefore safe to delete while allowing other threads to proceed.
   mutex_.Unlock();
   for (const std::string& filename : files_to_delete) {
+    std::cout << "delete: " << filename << std::endl; 
     env_->RemoveFile(dbname_ + "/" + filename);
   }
   mutex_.Lock();
