@@ -371,6 +371,7 @@ double ZonedEnv::FreePercent() {
 
 void ZonedEnv::ExecuteGC() {
   
+  zbd_->ResetUnusedIOZones();
 
   uint64_t non_free = zbd_->GetUsedSpace() + zbd_->GetReclaimableSpace();
   uint64_t free = zbd_->GetFreeSpace();
@@ -378,8 +379,7 @@ void ZonedEnv::ExecuteGC() {
   TaejukSnapshot snapshot;
   TaejukSnapshotOptions options;
 
-  //if (free_percent > GC_START_LEVEL) continue;
-  std::cout << "garbage collection start!: " << free_percent << std::endl;
+  if (free_percent > GC_START_LEVEL) return;
   options.zone_ = 1;
   options.zone_file_ = 1;
   options.log_garbage_ = 1;
@@ -387,17 +387,19 @@ void ZonedEnv::ExecuteGC() {
   GetTaejukSnapshot(snapshot, options);
 
   uint64_t threshold = (100 - GC_SLOPE * (GC_START_LEVEL - free_percent));
+  fprintf(stderr, "threshold: %d\n", threshold);
   std::set<uint64_t> migrate_zones_start;
   for (const auto& zone : snapshot.zones_) {
-    // if (zone.capacity == 0) {
-    //   uint64_t garbage_percent_approx =
-    //       100 - 100 * zone.used_capacity / zone.max_capacity;
-    //   if (garbage_percent_approx > threshold &&
-    //       garbage_percent_approx < 100) {
-    //     migrate_zones_start.emplace(zone.start);
-    //   }
-    // }
-    migrate_zones_start.emplace(zone.start);
+    
+    if (zone.capacity == 0) {
+      uint64_t garbage_percent_approx =
+          100 - 100 * zone.used_capacity / zone.max_capacity;
+      //fprintf(stderr, "garbage_percent_approx: %d\n", garbage_percent_approx);
+      if (garbage_percent_approx > threshold &&
+          garbage_percent_approx < 100) {
+        migrate_zones_start.emplace(zone.start);
+      }
+    }
   }
 
   std::vector<ZoneExtentSnapshot*> migrate_exts;
@@ -547,7 +549,7 @@ Status ZonedEnv::NewRandomAccessFile(const std::string& filename, RandomAccessFi
 }
 Status ZonedEnv::NewWritableFile(const std::string& filename, WritableFile** result,WriteLifeTimeHint hint){
   std::string fname = FormatPathLexically(filename);
-  std::cout << "fname: " << fname << std::endl;
+  //std::cout << "fname: " << fname << std::endl;
   return OpenWritableFile(fname, result, hint, false);
 }
 Status ZonedEnv::NewAppendableFile(const std::string& filename, WritableFile** result,WriteLifeTimeHint hint){
@@ -561,8 +563,9 @@ Status ZonedEnv::OpenWritableFile(const std::string& filename, WritableFile** re
   bool resetIOZones = false;
   {
     std::lock_guard<std::mutex> file_lock(files_mtx_);
+    
     std::shared_ptr<ZoneFile> zoneFile = GetFileNoLock(fname);
-
+   
     if(reopen && zoneFile != nullptr) {
       zoneFile->AcquireWRLock();
       *result = new ZonedWritableFile(zbd_, false, zoneFile);
@@ -570,6 +573,7 @@ Status ZonedEnv::OpenWritableFile(const std::string& filename, WritableFile** re
     }
 
     if (zoneFile != nullptr) {
+      
       s = DeleteFileNoLock(fname);
       if (!s.ok()) return s;
       resetIOZones = true;
@@ -583,6 +587,7 @@ Status ZonedEnv::OpenWritableFile(const std::string& filename, WritableFile** re
       if (fname.find(".log") != std::string::npos) hint = WLTH_SHORT;
       else hint = WLTH_LONG;
     }
+   
     zoneFile->SetWriteLifeTimeHint(hint);
     s = SyncFileMetadataNoLock(zoneFile);
     if (!s.ok()) {
@@ -788,7 +793,7 @@ Status ZonedEnv::MigrateExtents(const std::vector<ZoneExtentSnapshot*>& extents)
   for (auto *ext : extents) {
     std::string fname = ext->filename;
 
-    if (ends_with(fname, ".sst")) {
+    if (ends_with(fname, ".sst") || ends_with(fname, ".ldb")) {
       file_extents[fname].emplace_back(ext);
     }
   }
@@ -900,7 +905,7 @@ Status ZonedEnv::DeleteFileNoLock(std::string& fname){
   fname = FormatPathLexically(fname);
   
   zoneFile = GetFileNoLock(fname);
-  std::cout << "delete fname: " << fname <<" : " << zoneFile <<std::endl;
+  //std::cout << "delete fname: " << fname <<" : " << zoneFile <<std::endl;
   if (zoneFile != nullptr) {
     std::string record;
 

@@ -71,20 +71,35 @@ int main() {
     
     // 5. Put/Get 테스트
     std::cout << "[Step 5] I/O Test..." << std::endl;
-    for(int i = 0; i < 100000000; i++)
-    //s = db->Put(leveldb::WriteOptions(), std::to_string(i), "value1");
-    s = db->Put(leveldb::WriteOptions(), "1", "value1");
-    if (!s.ok()) std::cerr << "Put Error: " << s.ToString() << std::endl;
-
+    for(int i = 0; i < 20000000; i++) {
+        s = db->Put(leveldb::WriteOptions(), "1", std::to_string(i));
+        if (!s.ok() && i % 100000 == 0) std::cerr << "Put Error: " << s.ToString() << std::endl;
+    }
+    s = db->Put(leveldb::WriteOptions(), "2", "helli");
+    
     std::string val;
     s = db->Get(leveldb::ReadOptions(), "1", &val);
     if (!s.ok()) std::cerr << "Get Error: " << s.ToString() << std::endl;
     
     std::cout << "-> Read Value: " << val << std::endl;
-    std::cout << "free space: " << zenv->FreePercent() << std::endl;
+    std::cout << "free space (before compaction): " << zenv->FreePercent() << "%" << std::endl;
+
+    // ★ [추가] LevelDB 논리적 가비지 컬렉션 (전체 키 범위)
+    std::cout << "[Step 6] Compacting Range..." << std::endl;
+    db->CompactRange(nullptr, nullptr); // nullptr을 주면 전체 범위를 컴팩션합니다.
+    
+    std::cout << "free space (after compaction, before ZNS GC): " << zbd->GetFreeSpace() << " bytes" << std::endl;
+
+    // db 객체 정리 (LevelDB가 종료되면서 남아있는 불필요한 파일이나 메모리를 완벽히 정리)
     delete db;
-    // zenv, zbd는 OS가 정리하도록 둠 (테스트 코드이므로)
     
     std::cout << "=== ALL SUCCESS ===" << std::endl;
+    
+    // ★ [실행] ZNS 물리적 가비지 컬렉션
+    std::cout << "[Step 7] Executing ZNS GC..." << std::endl;
+    zenv->ExecuteGC();
+    
+    std::cout << "free space (after ZNS GC): " << zbd->GetFreeSpace() << " bytes" << std::endl;
+    
     return 0;
 }

@@ -126,6 +126,7 @@ Status Zone::Append(char *data, uint32_t size) {
     wp_ += ret;
     capacity_ -= ret;
     left -= ret;
+    // 쓰여진 byte를 추가한다.
     zbd_->AddBytesWritten(ret);
   }
 
@@ -187,7 +188,7 @@ Status ZonedBlockDevice::Open(bool readonly, bool exclusive) {
     // Error(logger_, "Failed to list zones");
     return Status::IOError("Failed to list zones");
   }
-
+  // meta zone을 추가하고
   while (m < TAEJUK_META_ZONES && i < zone_rep->ZoneCount()) {
     if (zbd_be_->ZoneIsSwr(zone_rep, i)) {
       if(!zbd_be_->ZoneIsOffline(zone_rep, i)) {
@@ -224,7 +225,7 @@ Status ZonedBlockDevice::Open(bool readonly, bool exclusive) {
       }
     }
   }
-
+  fprintf(stderr, "io zones: %d\n", io_zones.size());
   start_time_ = time(NULL);
 
   return Status::OK();
@@ -355,6 +356,7 @@ ZonedBlockDevice::~ZonedBlockDevice() {
 
 unsigned int GetLifeTimeDiff(WriteLifeTimeHint zone_lifetime, WriteLifeTimeHint file_lifetime) {
   assert(file_lifetime <= WLTH_EXTREME);
+  //fprintf(stderr, "zone lifetime: %d, file lifetime: %d\n", zone_lifetime, file_lifetime);
   if ((file_lifetime == WLTH_NOT_SET) ||
       (file_lifetime == WLTH_NONE)) {
     if (file_lifetime == zone_lifetime) {
@@ -394,6 +396,7 @@ Status ZonedBlockDevice::AllocateMetaZone(Zone **out_meta_zone) {
 Status ZonedBlockDevice::ResetUnusedIOZones() {
   for (const auto z : io_zones) {
     if (z->Acquire()) {
+      // 비어있지도 않고 사용하지도 않는 zone을 reset한다.
       if (!z->IsEmpty() && !z->IsUsed()) {
         bool full = z->IsFull();
         Status reset_status = z->Reset();
@@ -532,13 +535,17 @@ Status ZonedBlockDevice::GetBestOpenZoneMatch(
     WriteLifeTimeHint file_lifetime, unsigned int *best_diff_out, Zone **zone_out, uint32_t min_capacity
 ) {
   unsigned int best_diff = LIFETIME_DIFF_NOT_GOOD;
+  
   Zone *allocated_zone = nullptr;
   Status s;
 
   for(const auto z : io_zones) {
     if (z->Acquire()) {
+      // 
       if((z->used_capacity_ > 0) && !z->IsFull() && z->capacity_ >= min_capacity) {
         unsigned int diff = GetLifeTimeDiff(z->lifetime_, file_lifetime);
+//        std::cout << "diff: " << diff << std::endl; 
+//        diff = 0;
         if (diff <= best_diff) {
           if (allocated_zone != nullptr) {
             s = allocated_zone->CheckRelease();
@@ -563,10 +570,9 @@ Status ZonedBlockDevice::GetBestOpenZoneMatch(
 
   *best_diff_out = best_diff;
   *zone_out = allocated_zone;
-
   return Status::OK();
 }
-
+// 빈 zone을 할당한다.
 Status ZonedBlockDevice::AllocateEmptyZone(Zone **zone_out) {
   Status s;
   Zone *allocated_zone = nullptr;

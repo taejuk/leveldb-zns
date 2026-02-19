@@ -67,7 +67,6 @@ Status ZbdlibBackend::Open(bool readonly, bool exclusive,
                            unsigned int *max_active_zones,
                            unsigned int *max_open_zones) {
   zbd_info info;
-  //std::cout << "hello " << filename_ << std::endl;
   if (exclusive) {
     read_f_ = zbd_open(filename_.c_str(), O_RDONLY | O_EXCL, &info);
   } else {
@@ -81,7 +80,7 @@ Status ZbdlibBackend::Open(bool readonly, bool exclusive,
   }
 
   //read_direct_f_ = zbd_open(filename_.c_str(), O_RDONLY | O_DIRECT, &info);
-  read_direct_f_ = zbd_open(filename_.c_str(), O_RDONLY, &info);
+  read_direct_f_ = zbd_open(filename_.c_str(), O_RDONLY | O_DIRECT, &info);
   if (read_direct_f_ < 0) {
     return Status::InvalidArgument(
       "Failed to open zoned block device for direct read: " +
@@ -112,6 +111,7 @@ Status ZbdlibBackend::Open(bool readonly, bool exclusive,
 
   block_sz_ = info.pblock_size;
   zone_sz_ = info.zone_size;
+  //fprintf(stderr, "block sz: %d, zone sz: %d\n", block_sz_, zone_sz_);
   nr_zones_ = info.nr_zones;
   *max_active_zones = info.max_nr_active_zones;
   *max_open_zones = info.max_nr_open_zones;
@@ -125,6 +125,7 @@ std::unique_ptr<ZoneList> ZbdlibBackend::ListZones() {
 
   ret = zbd_list_zones(read_f_, 0, zone_sz_ * nr_zones_, ZBD_RO_ALL,
                        (struct zbd_zone**)&zones, &nr_zones);
+  
   if (ret) {
     return nullptr;
   }
@@ -171,8 +172,7 @@ Status ZbdlibBackend::Close(uint64_t start) {
   int ret;
   
   ret = zbd_close_zones(write_f_, start, zone_sz_);
-  //std::cout << "Close ret: " << strerror(errno) << std::endl;
-  //if (ret) return Status::IOError("Zone close failed\n");
+  if (ret) return Status::IOError("Zone close failed\n");
   
   return Status::OK();
 }

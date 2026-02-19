@@ -265,7 +265,7 @@ Status ZoneFile::CloseActiveZone() {
   if(active_zone_) {
     bool full = active_zone_->IsFull();
     s = active_zone_->Close();
-    
+    ReleaseActiveZone();
     if(!s.ok()) return s;
     // token들은 active와 open수를 관리하기 위한 것이다.
     zbd_->PutOpenIOZoneToken();
@@ -447,8 +447,9 @@ void ZoneFile::PushExtent() {
 
 Status ZoneFile::AllocateNewZone() {
   Zone* zone;
-  Status s = zbd_->AllocateIOZone(lifetime_, io_type_, &zone);
-
+  
+  //Status s = zbd_->AllocateIOZone(lifetime_, io_type_, &zone);
+  Status s = zbd_->AllocateIOZone(WLTH_LONG, io_type_, &zone);
   if (!s.ok()) return s;
   if (!zone) {
     return Status::NoSpace("Zone allocation failure\n");
@@ -643,7 +644,7 @@ ZonedWritableFile::ZonedWritableFile(ZonedBlockDevice* zbd, bool _buffered,
                              std::shared_ptr<ZoneFile> zoneFile) {
   assert(zoneFile->IsOpenForWR());
   wp = zoneFile->GetFileSize();
-
+//  std::cout << zoneFile->GetID() << ", wp: " << wp << std::endl;
   buffered = _buffered;
   
   block_sz = zbd->GetBlockSize();
@@ -706,7 +707,7 @@ Status ZonedWritableFile::BufferedWrite(const Slice& slice) {
   uint32_t data_left = slice.size();
   char* data = (char*)slice.data();
   Status s;
-
+  //fprintf(stderr, "buffer sz: %d, buffer pos: %d\n", buffer_sz, buffer_pos);
   while (data_left) {
     uint32_t buffer_left = buffer_sz - buffer_pos;
     uint32_t to_buffer;

@@ -20,10 +20,8 @@
 
 namespace leveldb {
 
-// 전방 선언
 class ZoneFile;
 
-// 1. ZoneExtent
 class ZoneExtent {
 public:
   uint64_t start_;
@@ -36,14 +34,12 @@ public:
   void EncodeJson(std::ostream& json_stream);
 };
 
-// 2. MetadataWriter (인터페이스)
 class MetadataWriter {
 public:
-  virtual ~MetadataWriter(); // [수정] 오타 수정 (~MetadataWrite -> ~MetadataWriter)
+  virtual ~MetadataWriter();
   virtual Status Persist(ZoneFile* zoneFile) = 0;
 };
 
-// 3. ZoneFile (파일 메타데이터 관리)
 class ZoneFile {
 private:
   const uint64_t NO_EXTENT = 0xffffffffffffffff;
@@ -56,7 +52,6 @@ private:
   uint64_t extent_start_ = NO_EXTENT;
   uint64_t extent_filepos_ = 0;
 
-  // env.h에 WriteLifeTimeHint를 추가했다고 가정
   WriteLifeTimeHint lifetime_; 
   uint64_t file_size_;
   uint64_t file_id_;

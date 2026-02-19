@@ -1,6 +1,7 @@
 #pragma once
 #include <filesystem>
 namespace fs = std::filesystem;
+
 #include <memory>
 #include <thread>
 #include <map>
@@ -41,7 +42,7 @@ class Superblock {
 
   Superblock(ZonedBlockDevice* zbd, std::string aux_fs_path = "",
              uint32_t finish_threshold = 0, bool enable_gc = false) {
-    std::string uuid = "test";
+    std::string uuid = "test3";
     //std::string uuid = Env::Default()->GenerateUniqueId();
     int uuid_len = std::min(uuid.length(), sizeof(uuid_) - 1);
     memcpy((void*)uuid_, uuid.c_str(), uuid_len);
@@ -53,6 +54,7 @@ class Superblock {
 
     block_size_ = zbd->GetBlockSize();
     zone_size_ = zbd->GetZoneSize() / block_size_;
+    fprintf(stderr, "zone size: %d\n", zone_size_);
     nr_zones_ = zbd->GetNrZones();
 
     strncpy(aux_fs_path_, aux_fs_path.c_str(), sizeof(aux_fs_path_) - 1);
