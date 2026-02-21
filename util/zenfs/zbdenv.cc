@@ -424,10 +424,9 @@ void ZonedEnv::ExecuteGC() {
 void ZonedEnv::GCWorker() {
   while (run_gc_worker_) {
     
-    //usleep(1000 * 1000 * 10);
     {
       std::unique_lock<std::mutex> lock(gc_mtx_);
-      gc_cv_.wait_for(lock, std::chrono::seconds(15));
+      gc_cv_.wait_for(lock, std::chrono::seconds(10));
     }
     uint64_t non_free = zbd_->GetUsedSpace() + zbd_->GetReclaimableSpace();
     uint64_t free = zbd_->GetFreeSpace();
@@ -566,8 +565,6 @@ Status ZonedEnv::OpenWritableFile(const std::string& filename, WritableFile** re
   // 여기서 FreePercent를 확인한다. 그리고 만약
   
   if(FreePercent() <= GC_START_LEVEL) {
-
-    //fprintf(stderr, "GC wake up!\n");  
     gc_cv_.notify_one();
   }
   {
@@ -623,39 +620,42 @@ bool ZonedEnv::FileExists(const std::string& filename) {
 }
 
 Status ZonedEnv::GetChildrenNoLock(const std::string& dir_path, std::vector<std::string>* result) {
-  // std::vector<std::string> auxfiles;
-  // std::string dir = FormatPathLexically(dir_path);
-  // Status s;
-
-  // s = target()->GetChildren(ToAuxPath(dir), &auxfiles);
-  // if (!s.ok()) {
-  //   if(!s.IsNotFound()) return s;
-    
-  // }
-
-  // for(const auto& f : auxfiles) {
-  //   if (f != "." && f != "..") result->push_back(f);
-  // }
-
-  // GetTaejukChildrenNoLock(dir, false, result);
-
-  // return s;
   std::vector<std::string> auxfiles;
   std::string dir = FormatPathLexically(dir_path);
   Status s;
 
   s = target()->GetChildren(ToAuxPath(dir), &auxfiles);
   if (!s.ok()) {
-    if(!s.IsNotFound()) return s; 
-  } else {
-    for(const auto& f : auxfiles) {
-      if (f != "." && f != "..") result->push_back(f);
-    }
+    if(!s.IsNotFound()) return s;
+    
+  }
+
+  for(const auto& f : auxfiles) {
+    if (f != "." && f != "..") result->push_back(f);
   }
 
   GetTaejukChildrenNoLock(dir, false, result);
 
   return Status::OK();
+  // std::vector<std::string> auxfiles;
+  // std::string dir = FormatPathLexically(dir_path);
+  // Status s;
+
+  // s = target()->GetChildren(ToAuxPath(dir), &auxfiles);
+  // std::cout <<"s: " << s.ToString() << std::endl;
+  // if (!s.ok()) {
+  //   if(!s.IsNotFound()) return s; 
+  // } else {
+    
+  //   for(const auto& f : auxfiles) {
+      
+  //     if (f != "." && f != "..") result->push_back(f);
+  //   }
+  // }
+
+  // GetTaejukChildrenNoLock(dir, false, result);
+
+  // return Status::OK();
 }
 
 void ZonedEnv::GetTaejukChildrenNoLock(const std::string& dir, bool include_grandchildren, std::vector<std::string>* result){
