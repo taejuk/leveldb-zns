@@ -21,9 +21,6 @@
 #include "util/random.h"
 #include "util/testutil.h"
 
-#include "leveldb/zenfs/zbdenv.h"
-#include "leveldb/zenfs/zbd_taejuk.h"
-
 // Comma-separated list of operations to run in the specified order
 //   Actual benchmarks:
 //      fillseq       -- write N values in sequential key order in async mode
@@ -1133,7 +1130,6 @@ int main(int argc, char** argv) {
     leveldb::g_env->GetTestDirectory(&default_db_path);
     default_db_path += "/dbbench";
     FLAGS_db = default_db_path.c_str();
-    //FLAGS_db = "/mnt/ramdisk/dbbench_vanilla";
   }
 
   leveldb::Benchmark benchmark;
