@@ -48,6 +48,7 @@ class Superblock {
     memcpy((void*)uuid_, uuid.c_str(), uuid_len);
     magic_ = MAGIC;
     flags_ = DEFAULT_FLAGS;
+    enable_gc = true;
     if (enable_gc) flags_ |= FLAGS_ENABLE_GC;
 
     finish_treshold_ = finish_threshold;
@@ -161,6 +162,9 @@ class LEVELDB_EXPORT ZonedEnv : public EnvWrapper {
   };
 
   ZonedBlockDevice* zbd_;
+
+  std::mutex gc_mtx_;
+  std::condition_variable gc_cv_;
   
   std::map<std::string, std::shared_ptr<ZoneFile>> files_;
   std::mutex files_mtx_;

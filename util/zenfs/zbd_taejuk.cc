@@ -412,7 +412,7 @@ Status ZonedBlockDevice::ResetUnusedIOZones() {
       }
     }
   }
-  fprintf(stderr, "total reset: %d\n", i);
+  //fprintf(stderr, "total reset: %d\n", i);
   return Status::OK();
 }
 

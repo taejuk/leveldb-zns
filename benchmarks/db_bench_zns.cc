@@ -1161,8 +1161,9 @@ int main(int argc, char** argv) {
   leveldb::Benchmark benchmark;
   benchmark.Run();
   
-  //zenv->ExecuteGC();
+  zenv->ExecuteGC();
   fprintf(stderr, "WAF: %f\n", zenv->GetWAF());
+  fprintf(stderr, "FreeSpace: %f%\n", zenv->FreePercent());
   return 0;
 }
 

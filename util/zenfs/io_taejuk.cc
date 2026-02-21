@@ -526,7 +526,6 @@ Status ZoneFile::Append(void* data, int data_size) {
     // 다 썼으니깐
     // 이때까지 쓴 데이터 저장하고
     // 새로운 존을 만든다.
-    std::cout << "capacity: " << active_zone_->capacity_ << std::endl;
     if (active_zone_->capacity_ == 0) {
       PushExtent();
 

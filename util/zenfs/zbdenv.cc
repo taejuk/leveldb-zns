@@ -236,6 +236,7 @@ ZonedEnv::~ZonedEnv() {
   Status s;
   if(gc_worker_) {
     run_gc_worker_ = false;
+    gc_cv_.notify_all();
     gc_worker_->join();
   }
 
@@ -371,7 +372,6 @@ double ZonedEnv::FreePercent() {
 
 void ZonedEnv::ExecuteGC() {
   
-  zbd_->ResetUnusedIOZones();
 
   uint64_t non_free = zbd_->GetUsedSpace() + zbd_->GetReclaimableSpace();
   uint64_t free = zbd_->GetFreeSpace();
@@ -424,8 +424,11 @@ void ZonedEnv::ExecuteGC() {
 void ZonedEnv::GCWorker() {
   while (run_gc_worker_) {
     
-    usleep(1000 * 1000 * 10);
-
+    //usleep(1000 * 1000 * 10);
+    {
+      std::unique_lock<std::mutex> lock(gc_mtx_);
+      gc_cv_.wait_for(lock, std::chrono::seconds(15));
+    }
     uint64_t non_free = zbd_->GetUsedSpace() + zbd_->GetReclaimableSpace();
     uint64_t free = zbd_->GetFreeSpace();
     uint64_t free_percent = (100 * free) / (free + non_free);
@@ -433,7 +436,6 @@ void ZonedEnv::GCWorker() {
     TaejukSnapshotOptions options;
 
     if (free_percent > GC_START_LEVEL) continue;
-    std::cout << "garbage collection start!" << std::endl;
     options.zone_ = 1;
     options.zone_file_ = 1;
     options.log_garbage_ = 1;
@@ -561,6 +563,13 @@ Status ZonedEnv::OpenWritableFile(const std::string& filename, WritableFile** re
   Status s;
   std::string fname = FormatPathLexically(filename);
   bool resetIOZones = false;
+  // 여기서 FreePercent를 확인한다. 그리고 만약
+  
+  if(FreePercent() <= GC_START_LEVEL) {
+
+    //fprintf(stderr, "GC wake up!\n");  
+    gc_cv_.notify_one();
+  }
   {
     std::lock_guard<std::mutex> file_lock(files_mtx_);
     
@@ -691,7 +700,7 @@ Status ZonedEnv::GetChildren(const std::string& dir, std::vector<std::string>* r
 
 
 Status ZonedEnv::RemoveFile(const std::string& fname) {
-  fprintf(stderr, "RemoveFile\n");
+  //fprintf(stderr, "RemoveFile\n");
   return DeleteFile(fname);
 }
 
@@ -704,10 +713,11 @@ Status ZonedEnv::DeleteFile(const std::string& fname) {
   Status s;
   files_mtx_.lock();
   std::string filename = fname;
-  fprintf(stderr, "delete file: %s\n", fname);
+  //fprintf(stderr, "delete file: %s\n", fname);
   s = DeleteFileNoLock(filename);
   files_mtx_.unlock();
   if (s.ok()) s = zbd_->ResetUnusedIOZones();
+  //ExecuteGC();
   return s;
 }
 Status ZonedEnv::GetFileSize(const std::string& filename, uint64_t* file_size) {
@@ -819,7 +829,7 @@ Status ZonedEnv::MigrateExtents(const std::vector<ZoneExtentSnapshot*>& extents)
   for (auto *ext : extents) {
     std::string fname = ext->filename;
 
-    if (ends_with(fname, ".sst") || ends_with(fname, ".ldb")) {
+    if (ends_with(fname, "sst") || ends_with(fname, "ldb")) {
       file_extents[fname].emplace_back(ext);
     }
   }

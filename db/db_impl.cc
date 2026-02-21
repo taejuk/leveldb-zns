@@ -285,7 +285,7 @@ void DBImpl::RemoveObsoleteFiles() {
   // are therefore safe to delete while allowing other threads to proceed.
   mutex_.Unlock();
   for (const std::string& filename : files_to_delete) {
-    std::cout << "delete: " << filename << std::endl; 
+    //std::cout << "delete: " << filename << std::endl; 
     env_->RemoveFile(dbname_ + "/" + filename);
   }
   mutex_.Lock();
@@ -718,6 +718,7 @@ void DBImpl::BackgroundCompaction() {
   Compaction* c;
   bool is_manual = (manual_compaction_ != nullptr);
   InternalKey manual_end;
+  
   if (is_manual) {
     ManualCompaction* m = manual_compaction_;
     c = versions_->CompactRange(m->level, m->begin, m->end);

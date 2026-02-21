@@ -669,7 +669,7 @@ class Benchmark {
       }
 
       if (method != nullptr) {
-      (num_threads, name, method);
+        RunBenchmark(num_threads, name, method);
       }
     }
   }
@@ -1130,10 +1130,10 @@ int main(int argc, char** argv) {
   
   // Choose a location for the test database if none given with --db=<path>
   if (FLAGS_db == nullptr) {
-    // leveldb::g_env->GetTestDirectory(&default_db_path);
-    // default_db_path += "/dbbench";
-    // FLAGS_db = default_db_path.c_str();
-    FLAGS_db = "/mnt/ramdisk/dbbench_vanilla";
+    leveldb::g_env->GetTestDirectory(&default_db_path);
+    default_db_path += "/dbbench";
+    FLAGS_db = default_db_path.c_str();
+    //FLAGS_db = "/mnt/ramdisk/dbbench_vanilla";
   }
 
   leveldb::Benchmark benchmark;

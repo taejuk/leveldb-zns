@@ -69,10 +69,11 @@ int main() {
 
     std::cout << "-> DB Open Success!" << std::endl;
     
-    // 5. Put/Get 테스트
+    
     std::cout << "[Step 5] I/O Test..." << std::endl;
     for(int i = 0; i < 20000000; i++) {
-        s = db->Put(leveldb::WriteOptions(), "1", std::to_string(i));
+        int idx = i % 10000000;
+        s = db->Put(leveldb::WriteOptions(), std::to_string(idx), std::to_string(i));
         if (!s.ok() && i % 100000 == 0) std::cerr << "Put Error: " << s.ToString() << std::endl;
     }
     s = db->Put(leveldb::WriteOptions(), "2", "helli");
@@ -100,6 +101,6 @@ int main() {
     zenv->ExecuteGC();
     
     std::cout << "free space (after ZNS GC): " << zbd->GetFreeSpace() << " bytes" << std::endl;
-    
+    std::cout << "WAF: " << zenv->GetWAF() << std::endl;
     return 0;
 }
