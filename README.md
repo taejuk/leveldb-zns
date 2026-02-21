@@ -76,7 +76,7 @@ make -j$(nproc)
 sudo sync; echo 3 | sudo tee /proc/sys/vm/drop_caches
 
 # 벤치마크 실행 (ZNS 디바이스 타겟)
-./db_bench_zns --zbd=/dev/nullb0 --benchmarks="fillrandom,stats" --value_size=1024 --num=500000
+./db_bench_zns --benchmarks="fillrandom,stats" --value_size=1024 --num=500000
 ```
 
 ### 4. Future Work
